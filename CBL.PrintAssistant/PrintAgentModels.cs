@@ -54,6 +54,30 @@ namespace CBL.PrintAssistant
 
         [JsonPropertyName("job")]
         public PrintJobDto? Job { get; set; }
+
+        [JsonPropertyName("agent")]
+        public PrintAgentInfoDto? Agent { get; set; }
+
+        [JsonPropertyName("error")]
+        public string? Error { get; set; }
+    }
+
+    public class PrintAgentInfoDto
+    {
+        [JsonPropertyName("agent_id")]
+        public string? AgentId { get; set; }
+
+        [JsonPropertyName("printer_id")]
+        public string? PrinterId { get; set; }
+
+        [JsonPropertyName("printer_name")]
+        public string? PrinterName { get; set; }
+
+        [JsonPropertyName("paper_size")]
+        public string? PaperSize { get; set; }
+
+        [JsonPropertyName("dpi")]
+        public int? Dpi { get; set; }
     }
 
     public class PrintJobDto

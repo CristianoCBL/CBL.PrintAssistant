@@ -25,11 +25,52 @@ namespace CBL.PrintAssistant
 
             _configPath = Path.Combine(Application.StartupPath, "appconfig.json");
 
+            ConfigureRotationCombo();
+            UpdateStatusUi(false);
+            UpdateStaticInfo();
+
             AddLog("Aplicativo iniciado.");
             AddLog("Agent ID local: " + Environment.MachineName);
 
             LoadInstalledPrinters();
             LoadConfig();
+        }
+
+        private void ConfigureRotationCombo()
+        {
+            cmbRotation.Items.Clear();
+            cmbRotation.Items.Add("Automático");
+            cmbRotation.Items.Add("0°");
+            cmbRotation.Items.Add("90°");
+            cmbRotation.Items.Add("180°");
+            cmbRotation.Items.Add("270°");
+            cmbRotation.SelectedIndex = 0;
+        }
+
+        private void UpdateStaticInfo()
+        {
+            lblAgentIdValue.Text = Environment.MachineName;
+            lblSystemPrinterValue.Text = "-";
+            lblLastHeartbeatValue.Text = "-";
+            lblLastJobValue.Text = "-";
+        }
+
+        private void UpdateStatusUi(bool active)
+        {
+            _isListening = active;
+            lblStatusDot.ForeColor = active ? Color.ForestGreen : Color.Firebrick;
+            lblStatusText.Text = active ? "Ativo" : "Inativo";
+            btnStartListener.Text = active ? "Parar Escuta" : "Iniciar Escuta";
+        }
+
+        private void UpdateHeartbeatUi()
+        {
+            lblLastHeartbeatValue.Text = DateTime.Now.ToString("HH:mm:ss");
+        }
+
+        private void UpdateLastJobUi(string value)
+        {
+            lblLastJobValue.Text = value;
         }
 
         private void btnLoadPrinters_Click(object sender, EventArgs e)
@@ -105,7 +146,11 @@ namespace CBL.PrintAssistant
                 UnitId = txtUnitId.Text.Trim(),
                 KioskId = txtKioskId.Text.Trim(),
                 PrinterName = cmbPrinters.SelectedItem?.ToString() ?? "",
-                StartWithWindows = chkStartWithWindows.Checked
+                StartWithWindows = chkStartWithWindows.Checked,
+                RotationMode = cmbRotation.SelectedItem?.ToString() ?? "Automático",
+                Bleed = (int)nudBleed.Value,
+                OffsetX = (int)nudOffsetX.Value,
+                OffsetY = (int)nudOffsetY.Value
             };
         }
 
@@ -166,6 +211,15 @@ namespace CBL.PrintAssistant
                 txtUnitId.Text = config.UnitId;
                 txtKioskId.Text = config.KioskId;
                 chkStartWithWindows.Checked = config.StartWithWindows;
+
+                if (!string.IsNullOrWhiteSpace(config.RotationMode) && cmbRotation.Items.Contains(config.RotationMode))
+                    cmbRotation.SelectedItem = config.RotationMode;
+                else
+                    cmbRotation.SelectedIndex = 0;
+
+                nudBleed.Value = Math.Max(nudBleed.Minimum, Math.Min(nudBleed.Maximum, config.Bleed));
+                nudOffsetX.Value = Math.Max(nudOffsetX.Minimum, Math.Min(nudOffsetX.Maximum, config.OffsetX));
+                nudOffsetY.Value = Math.Max(nudOffsetY.Minimum, Math.Min(nudOffsetY.Maximum, config.OffsetY));
 
                 AddLog("Configuração carregada.");
                 TryRestoreSavedPrinter();
@@ -272,7 +326,6 @@ namespace CBL.PrintAssistant
                 printDocument.Print();
 
                 AddLog($"Teste de impressão enviado para: {printerName}");
-
                 MessageBox.Show(
                     "Teste de impressão enviado com sucesso.",
                     "Sucesso",
@@ -322,11 +375,20 @@ namespace CBL.PrintAssistant
                     });
 
                 if (registerResponse == null || !registerResponse.Ok)
-                    throw new Exception("A API não confirmou o registro do agente.");
+                    throw new Exception(registerResponse?.Error ?? "A API não confirmou o registro do agente.");
+
+                if (registerResponse.Agent != null)
+                {
+                    lblSystemPrinterValue.Text = string.IsNullOrWhiteSpace(registerResponse.Agent.PrinterName)
+                        ? "-"
+                        : registerResponse.Agent.PrinterName;
+
+                    if (!string.IsNullOrWhiteSpace(registerResponse.Agent.AgentId))
+                        lblAgentIdValue.Text = registerResponse.Agent.AgentId;
+                }
 
                 _listenerCts = new CancellationTokenSource();
-                _isListening = true;
-                btnStartListener.Text = "Parar Escuta";
+                UpdateStatusUi(true);
 
                 AddLog("Agente registrado com sucesso.");
                 AddLog("Escuta iniciada.");
@@ -335,6 +397,7 @@ namespace CBL.PrintAssistant
             }
             catch (Exception ex)
             {
+                UpdateStatusUi(false);
                 AddLog("Erro ao iniciar escuta: " + ex.Message);
                 MessageBox.Show(
                     "Erro ao iniciar escuta:\n" + ex.Message,
@@ -357,8 +420,7 @@ namespace CBL.PrintAssistant
             {
             }
 
-            _isListening = false;
-            btnStartListener.Text = "Iniciar Escuta";
+            UpdateStatusUi(false);
             AddLog("Escuta parada.");
         }
 
@@ -404,6 +466,7 @@ namespace CBL.PrintAssistant
                                 AgentToken = config.AgentToken
                             });
 
+                        UpdateHeartbeatUi();
                         AddLog("Heartbeat enviado.");
                     }
 
@@ -418,6 +481,7 @@ namespace CBL.PrintAssistant
 
                     if (nextJobResponse?.Job != null)
                     {
+                        UpdateLastJobUi(nextJobResponse.Job.PrintOrderId);
                         AddLog("Job encontrado: " + nextJobResponse.Job.PrintOrderId);
                         await ProcessJobAsync(config, nextJobResponse.Job, cancellationToken);
                     }
@@ -441,7 +505,7 @@ namespace CBL.PrintAssistant
                 }
             }
 
-            StopListener();
+            UpdateStatusUi(false);
         }
 
         private async Task ProcessJobAsync(AppConfig config, PrintJobDto job, CancellationToken cancellationToken)
@@ -489,6 +553,7 @@ namespace CBL.PrintAssistant
                         CopiesPrinted = Math.Max(1, job.Copies)
                     });
 
+                UpdateLastJobUi(job.PrintOrderId);
                 AddLog("Job concluído: " + job.PrintOrderId);
             }
             catch (Exception ex)
@@ -565,6 +630,7 @@ namespace CBL.PrintAssistant
             using Image originalImage = Image.FromFile(imagePath);
             using Bitmap preparedImage = new Bitmap(originalImage);
 
+            ApplyRotation(preparedImage, cmbRotation.SelectedItem?.ToString() ?? "Automático");
             preparedImage.SetResolution(300, 300);
 
             PrintDocument printDocument = new PrintDocument();
@@ -573,7 +639,6 @@ namespace CBL.PrintAssistant
             if (!printDocument.PrinterSettings.IsValid)
                 throw new Exception("A impressora selecionada não é válida no Windows.");
 
-            // força papel 4x6
             PaperSize? selectedPaper = null;
 
             foreach (PaperSize ps in printDocument.PrinterSettings.PaperSizes)
@@ -601,6 +666,10 @@ namespace CBL.PrintAssistant
             printDocument.DefaultPageSettings.Margins = new Margins(0, 0, 0, 0);
             printDocument.OriginAtMargins = false;
 
+            int bleed = (int)nudBleed.Value;
+            int offsetX = (int)nudOffsetX.Value;
+            int offsetY = (int)nudOffsetY.Value;
+
             printDocument.PrintPage += (s, ev) =>
             {
                 ev.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
@@ -611,65 +680,40 @@ namespace CBL.PrintAssistant
                 float hardX = ev.PageSettings.HardMarginX;
                 float hardY = ev.PageSettings.HardMarginY;
 
-                // pequeno bleed para eliminar borda branca e centralizar melhor
-                int bleed = 8;
-
                 Rectangle drawRect = new Rectangle(
-                    (int)Math.Round(-hardX) - bleed,
-                    (int)Math.Round(-hardY) - bleed,
+                    (int)Math.Round(-hardX) - bleed + offsetX,
+                    (int)Math.Round(-hardY) - bleed + offsetY,
                     ev.PageBounds.Width + (int)Math.Round(hardX * 2) + (bleed * 2),
                     ev.PageBounds.Height + (int)Math.Round(hardY * 2) + (bleed * 2)
                 );
 
                 ev.Graphics.DrawImage(preparedImage, drawRect);
-
                 ev.HasMorePages = false;
             };
 
             printDocument.Print();
         }
 
-        private Bitmap PrepareImageForPrint(Image originalImage, int targetWidth, int targetHeight)
+        private void ApplyRotation(Bitmap bitmap, string rotationMode)
         {
-            float targetRatio = (float)targetWidth / targetHeight;
-            float originalRatio = (float)originalImage.Width / originalImage.Height;
-
-            Rectangle cropRect;
-
-            if (originalRatio > targetRatio)
+            switch (rotationMode)
             {
-                int newWidth = (int)(originalImage.Height * targetRatio);
-                int x = (originalImage.Width - newWidth) / 2;
-
-                cropRect = new Rectangle(x, 0, newWidth, originalImage.Height);
+                case "90°":
+                    bitmap.RotateFlip(RotateFlipType.Rotate90FlipNone);
+                    break;
+                case "180°":
+                    bitmap.RotateFlip(RotateFlipType.Rotate180FlipNone);
+                    break;
+                case "270°":
+                    bitmap.RotateFlip(RotateFlipType.Rotate270FlipNone);
+                    break;
+                case "Automático":
+                    // mantém como veio
+                    break;
+                case "0°":
+                default:
+                    break;
             }
-            else
-            {
-                int newHeight = (int)(originalImage.Width / targetRatio);
-                int y = (originalImage.Height - newHeight) / 2;
-
-                cropRect = new Rectangle(0, y, originalImage.Width, newHeight);
-            }
-
-            Bitmap finalBitmap = new Bitmap(targetWidth, targetHeight);
-            finalBitmap.SetResolution(300, 300);
-
-            using (Graphics g = Graphics.FromImage(finalBitmap))
-            {
-                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
-                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-                g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
-
-                g.DrawImage(
-                    originalImage,
-                    new Rectangle(0, 0, targetWidth, targetHeight),
-                    cropRect,
-                    GraphicsUnit.Pixel
-                );
-            }
-
-            return finalBitmap;
         }
 
         private void AddLog(string message)
@@ -686,8 +730,7 @@ namespace CBL.PrintAssistant
             }
         }
 
-        // handlers exigidos pelo Designer atual
-        private void label1_Click(object sender, EventArgs e) { }
+        // handlers exigidos pelo Designer
         private void label3_Click(object sender, EventArgs e) { }
         private void textBox3_TextChanged(object sender, EventArgs e) { }
         private void lblSupabaseUrl_Click(object sender, EventArgs e) { }
