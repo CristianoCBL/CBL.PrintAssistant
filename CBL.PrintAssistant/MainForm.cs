@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Printing;
 using System.IO;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -16,6 +17,7 @@ namespace CBL.PrintAssistant
         private readonly string _configPath;
         private AppConfig? _currentConfig;
         private readonly PrintAgentService _printAgentService = new PrintAgentService();
+        private readonly UpdateService _updateService = new UpdateService();
 
         private CancellationTokenSource? _listenerCts;
         private bool _isListening;
@@ -25,6 +27,8 @@ namespace CBL.PrintAssistant
         private ContextMenuStrip? _trayMenu;
 
         private const string StartupRegistryName = "CBL.PrintAssistant";
+        private const string GitHubOwner = "CristianoCBL";
+        private const string GitHubRepo = "CBL.PrintAssistant";
 
         public MainForm()
         {
@@ -39,6 +43,7 @@ namespace CBL.PrintAssistant
 
             AddLog("Aplicativo iniciado.");
             AddLog("Agent ID local: " + Environment.MachineName);
+            AddLog("Versão atual: " + GetCurrentVersion());
 
             LoadInstalledPrinters();
             LoadConfig();
@@ -102,11 +107,15 @@ namespace CBL.PrintAssistant
             var toggleListenItem = new ToolStripMenuItem("Iniciar/Parar Escuta");
             toggleListenItem.Click += async (s, e) => await ToggleListenerFromTrayAsync();
 
+            var checkUpdatesItem = new ToolStripMenuItem("Verificar Atualização");
+            checkUpdatesItem.Click += async (s, e) => await CheckForUpdatesAsync(true);
+
             var exitItem = new ToolStripMenuItem("Sair");
             exitItem.Click += (s, e) => ExitApplication();
 
             _trayMenu.Items.Add(openItem);
             _trayMenu.Items.Add(toggleListenItem);
+            _trayMenu.Items.Add(checkUpdatesItem);
             _trayMenu.Items.Add(new ToolStripSeparator());
             _trayMenu.Items.Add(exitItem);
 
@@ -121,7 +130,7 @@ namespace CBL.PrintAssistant
             _trayIcon.DoubleClick += (s, e) => ShowFromTray();
         }
 
-        private void MainForm_Shown(object? sender, EventArgs e)
+        private async void MainForm_Shown(object? sender, EventArgs e)
         {
             string[] args = Environment.GetCommandLineArgs();
 
@@ -130,9 +139,11 @@ namespace CBL.PrintAssistant
                 if (string.Equals(arg, "--tray", StringComparison.OrdinalIgnoreCase))
                 {
                     HideToTray();
-                    return;
+                    break;
                 }
             }
+
+            await CheckForUpdatesAsync(false);
         }
 
         private void MainForm_Resize(object? sender, EventArgs e)
@@ -160,9 +171,6 @@ namespace CBL.PrintAssistant
             if (_trayIcon != null)
             {
                 _trayIcon.Visible = true;
-                _trayIcon.BalloonTipTitle = "CBL Print Assistant";
-                _trayIcon.BalloonTipText = "O aplicativo continua rodando na bandeja.";
-                _trayIcon.ShowBalloonTip(1500);
             }
         }
 
@@ -230,6 +238,110 @@ namespace CBL.PrintAssistant
 
                 AddLog("Inicialização com Windows desativada.");
             }
+        }
+
+        private string GetCurrentVersion()
+        {
+            var infoVersion = Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+                .InformationalVersion;
+
+            if (!string.IsNullOrWhiteSpace(infoVersion))
+                return infoVersion;
+
+            return Application.ProductVersion;
+        }
+
+        private Version GetCurrentVersionParsed()
+        {
+            string versionText = GetCurrentVersion();
+
+            int plusIndex = versionText.IndexOf('+');
+            if (plusIndex >= 0)
+                versionText = versionText.Substring(0, plusIndex);
+
+            if (Version.TryParse(versionText, out var version))
+                return version;
+
+            return new Version(1, 0, 0);
+        }
+
+        private async Task CheckForUpdatesAsync(bool manual)
+        {
+            try
+            {
+                AddLog("Verificando atualizações...");
+
+                var result = await _updateService.CheckForUpdateAsync(
+                    GitHubOwner,
+                    GitHubRepo,
+                    GetCurrentVersionParsed()
+                );
+
+                if (!result.HasUpdate)
+                {
+                    AddLog("Nenhuma atualização encontrada.");
+
+                    if (manual)
+                    {
+                        MessageBox.Show(
+                            "Você já está na versão mais recente.",
+                            "Atualização",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information
+                        );
+                    }
+
+                    return;
+                }
+
+                AddLog($"Nova versão encontrada: {result.LatestVersion}");
+
+                var dialogResult = MessageBox.Show(
+                    $"Nova versão disponível: {result.LatestVersion}\n\nDeseja baixar e atualizar agora?",
+                    "Atualização disponível",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information
+                );
+
+                if (dialogResult != DialogResult.Yes)
+                    return;
+
+                AddLog("Baixando atualização...");
+
+                string scriptPath = await _updateService.DownloadAndPrepareUpdateAsync(
+                    result.DownloadUrl ?? "",
+                    Application.StartupPath,
+                    $"{Application.ProductName}.exe",
+                    result.LatestVersion
+                );
+
+                AddLog("Atualização preparada. Reiniciando aplicativo...");
+
+                _updateService.LaunchUpdateScript(scriptPath);
+
+                _allowClose = true;
+                Application.Exit();
+            }
+            catch (Exception ex)
+            {
+                AddLog("Erro ao verificar atualização: " + ex.Message);
+
+                if (manual)
+                {
+                    MessageBox.Show(
+                        "Erro ao verificar atualização:\n" + ex.Message,
+                        "Erro",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error
+                    );
+                }
+            }
+        }
+
+        private void btnCheckUpdates_Click(object sender, EventArgs e)
+        {
+            _ = CheckForUpdatesAsync(true);
         }
 
         private void btnLoadPrinters_Click(object sender, EventArgs e)
@@ -895,12 +1007,9 @@ namespace CBL.PrintAssistant
             }
         }
 
-        // handlers exigidos pelo Designer
         private void label3_Click(object sender, EventArgs e) { }
         private void textBox3_TextChanged(object sender, EventArgs e) { }
         private void lblSupabaseUrl_Click(object sender, EventArgs e) { }
         private void txtSupabaseUrl_TextChanged(object sender, EventArgs e) { }
-        private void groupBox3_Enter(object sender, EventArgs e) { }
-        private void MainForm_Load(object sender, EventArgs e) { }
     }
 }
