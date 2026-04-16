@@ -47,23 +47,13 @@ namespace CBL.PrintAssistant
                     a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) &&
                     a.Name.Contains("CBL.PrintAssistant", StringComparison.OrdinalIgnoreCase));
 
-            if (zipAsset == null)
-                return new UpdateCheckResult
-                {
-                    HasUpdate = latestVersion > currentVersion,
-                    LatestVersion = latestVersion,
-                    ReleaseName = release.Name ?? release.TagName,
-                    ReleaseNotes = release.Body ?? "",
-                    DownloadUrl = null
-                };
-
             return new UpdateCheckResult
             {
                 HasUpdate = latestVersion > currentVersion,
                 LatestVersion = latestVersion,
                 ReleaseName = release.Name ?? release.TagName,
                 ReleaseNotes = release.Body ?? "",
-                DownloadUrl = zipAsset.BrowserDownloadUrl
+                DownloadUrl = zipAsset?.BrowserDownloadUrl
             };
         }
 
@@ -103,13 +93,15 @@ namespace CBL.PrintAssistant
 
             ZipFile.ExtractToDirectory(zipPath, extractPath, true);
 
+            string contentRoot = ResolveExtractedContentRoot(extractPath, exeName);
+
             string updateCmdPath = Path.Combine(versionFolder, "apply-update.cmd");
 
             string script = $@"@echo off
 setlocal
 timeout /t 2 /nobreak >nul
 
-set ""SOURCE={extractPath}""
+set ""SOURCE={contentRoot}""
 set ""TARGET={appDirectory}""
 set ""EXE={exeName}""
 
@@ -135,6 +127,23 @@ exit
             };
 
             Process.Start(psi);
+        }
+
+        private static string ResolveExtractedContentRoot(string extractPath, string exeName)
+        {
+            string exeAtRoot = Path.Combine(extractPath, exeName);
+            if (File.Exists(exeAtRoot))
+                return extractPath;
+
+            var directories = Directory.GetDirectories(extractPath);
+            foreach (var dir in directories)
+            {
+                string nestedExe = Path.Combine(dir, exeName);
+                if (File.Exists(nestedExe))
+                    return dir;
+            }
+
+            return extractPath;
         }
 
         private static string NormalizeVersion(string? tag)

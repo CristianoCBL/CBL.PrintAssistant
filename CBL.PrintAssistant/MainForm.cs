@@ -312,7 +312,7 @@ namespace CBL.PrintAssistant
                 string scriptPath = await _updateService.DownloadAndPrepareUpdateAsync(
                     result.DownloadUrl ?? "",
                     Application.StartupPath,
-                    $"{Application.ProductName}.exe",
+                    Path.GetFileName(Application.ExecutablePath),
                     result.LatestVersion
                 );
 
