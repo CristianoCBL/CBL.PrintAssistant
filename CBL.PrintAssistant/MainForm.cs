@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.Win32;
 using Newtonsoft.Json;
 
 namespace CBL.PrintAssistant
@@ -18,6 +19,12 @@ namespace CBL.PrintAssistant
 
         private CancellationTokenSource? _listenerCts;
         private bool _isListening;
+        private bool _allowClose;
+
+        private NotifyIcon? _trayIcon;
+        private ContextMenuStrip? _trayMenu;
+
+        private const string StartupRegistryName = "CBL.PrintAssistant";
 
         public MainForm()
         {
@@ -28,12 +35,17 @@ namespace CBL.PrintAssistant
             ConfigureRotationCombo();
             UpdateStatusUi(false);
             UpdateStaticInfo();
+            InitializeTray();
 
             AddLog("Aplicativo iniciado.");
             AddLog("Agent ID local: " + Environment.MachineName);
 
             LoadInstalledPrinters();
             LoadConfig();
+
+            Shown += MainForm_Shown;
+            Resize += MainForm_Resize;
+            FormClosing += MainForm_FormClosing;
         }
 
         private void ConfigureRotationCombo()
@@ -61,6 +73,13 @@ namespace CBL.PrintAssistant
             lblStatusDot.ForeColor = active ? Color.ForestGreen : Color.Firebrick;
             lblStatusText.Text = active ? "Ativo" : "Inativo";
             btnStartListener.Text = active ? "Parar Escuta" : "Iniciar Escuta";
+
+            if (_trayIcon != null)
+            {
+                _trayIcon.Text = active
+                    ? "CBL Print Assistant - Ativo"
+                    : "CBL Print Assistant - Inativo";
+            }
         }
 
         private void UpdateHeartbeatUi()
@@ -71,6 +90,146 @@ namespace CBL.PrintAssistant
         private void UpdateLastJobUi(string value)
         {
             lblLastJobValue.Text = value;
+        }
+
+        private void InitializeTray()
+        {
+            _trayMenu = new ContextMenuStrip();
+
+            var openItem = new ToolStripMenuItem("Abrir");
+            openItem.Click += (s, e) => ShowFromTray();
+
+            var toggleListenItem = new ToolStripMenuItem("Iniciar/Parar Escuta");
+            toggleListenItem.Click += async (s, e) => await ToggleListenerFromTrayAsync();
+
+            var exitItem = new ToolStripMenuItem("Sair");
+            exitItem.Click += (s, e) => ExitApplication();
+
+            _trayMenu.Items.Add(openItem);
+            _trayMenu.Items.Add(toggleListenItem);
+            _trayMenu.Items.Add(new ToolStripSeparator());
+            _trayMenu.Items.Add(exitItem);
+
+            _trayIcon = new NotifyIcon
+            {
+                Icon = SystemIcons.Application,
+                Visible = true,
+                Text = "CBL Print Assistant - Inativo",
+                ContextMenuStrip = _trayMenu
+            };
+
+            _trayIcon.DoubleClick += (s, e) => ShowFromTray();
+        }
+
+        private void MainForm_Shown(object? sender, EventArgs e)
+        {
+            string[] args = Environment.GetCommandLineArgs();
+
+            foreach (string arg in args)
+            {
+                if (string.Equals(arg, "--tray", StringComparison.OrdinalIgnoreCase))
+                {
+                    HideToTray();
+                    return;
+                }
+            }
+        }
+
+        private void MainForm_Resize(object? sender, EventArgs e)
+        {
+            if (WindowState == FormWindowState.Minimized)
+            {
+                HideToTray();
+            }
+        }
+
+        private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
+        {
+            if (_allowClose)
+                return;
+
+            e.Cancel = true;
+            HideToTray();
+        }
+
+        private void HideToTray()
+        {
+            Hide();
+            ShowInTaskbar = false;
+
+            if (_trayIcon != null)
+            {
+                _trayIcon.Visible = true;
+                _trayIcon.BalloonTipTitle = "CBL Print Assistant";
+                _trayIcon.BalloonTipText = "O aplicativo continua rodando na bandeja.";
+                _trayIcon.ShowBalloonTip(1500);
+            }
+        }
+
+        private void ShowFromTray()
+        {
+            Show();
+            ShowInTaskbar = true;
+            WindowState = FormWindowState.Normal;
+            Activate();
+        }
+
+        private async Task ToggleListenerFromTrayAsync()
+        {
+            if (_isListening)
+            {
+                StopListener();
+                return;
+            }
+
+            await StartListenerAsync();
+        }
+
+        private void ExitApplication()
+        {
+            try
+            {
+                _allowClose = true;
+                _trayIcon?.Dispose();
+                _trayIcon = null;
+                _trayMenu?.Dispose();
+                _trayMenu = null;
+
+                _listenerCts?.Cancel();
+                _listenerCts?.Dispose();
+                _listenerCts = null;
+            }
+            catch
+            {
+            }
+
+            Application.Exit();
+        }
+
+        private void ApplyStartupSetting(bool enabled)
+        {
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Run",
+                writable: true
+            );
+
+            if (key == null)
+                throw new Exception("Não foi possível acessar o registro do Windows.");
+
+            if (enabled)
+            {
+                string exePath = Application.ExecutablePath;
+                string value = $"\"{exePath}\" --tray";
+                key.SetValue(StartupRegistryName, value);
+                AddLog("Inicialização com Windows ativada.");
+            }
+            else
+            {
+                if (key.GetValue(StartupRegistryName) != null)
+                    key.DeleteValue(StartupRegistryName, false);
+
+                AddLog("Inicialização com Windows desativada.");
+            }
         }
 
         private void btnLoadPrinters_Click(object sender, EventArgs e)
@@ -164,6 +323,8 @@ namespace CBL.PrintAssistant
                 File.WriteAllText(_configPath, json);
 
                 _currentConfig = config;
+
+                ApplyStartupSetting(config.StartWithWindows);
 
                 AddLog("Configuração salva com sucesso.");
                 MessageBox.Show(
@@ -353,6 +514,11 @@ namespace CBL.PrintAssistant
                 return;
             }
 
+            await StartListenerAsync();
+        }
+
+        private async Task StartListenerAsync()
+        {
             try
             {
                 var config = GetConfigFromForm();
@@ -708,7 +874,6 @@ namespace CBL.PrintAssistant
                     bitmap.RotateFlip(RotateFlipType.Rotate270FlipNone);
                     break;
                 case "Automático":
-                    // mantém como veio
                     break;
                 case "0°":
                 default:
@@ -735,5 +900,7 @@ namespace CBL.PrintAssistant
         private void textBox3_TextChanged(object sender, EventArgs e) { }
         private void lblSupabaseUrl_Click(object sender, EventArgs e) { }
         private void txtSupabaseUrl_TextChanged(object sender, EventArgs e) { }
+        private void groupBox3_Enter(object sender, EventArgs e) { }
+        private void MainForm_Load(object sender, EventArgs e) { }
     }
 }

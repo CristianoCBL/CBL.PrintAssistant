@@ -102,7 +102,7 @@
             // label4
             // 
             label4.AutoSize = true;
-            label4.Location = new Point(20, 188);
+            label4.Location = new Point(300, 132);
             label4.Name = "label4";
             label4.Size = new Size(49, 15);
             label4.TabIndex = 3;
@@ -113,7 +113,7 @@
             label5.AutoSize = true;
             label5.Location = new Point(20, 244);
             label5.Name = "label5";
-            label5.Size = new Size(115, 15);
+            label5.Size = new Size(117, 15);
             label5.TabIndex = 4;
             label5.Text = "Impressora Windows";
             // 
@@ -122,7 +122,7 @@
             label6.AutoSize = true;
             label6.Location = new Point(20, 488);
             label6.Name = "label6";
-            label6.Size = new Size(31, 15);
+            label6.Size = new Size(32, 15);
             label6.TabIndex = 5;
             label6.Text = "Logs";
             // 
@@ -259,7 +259,7 @@
             lblStatusDot.ForeColor = Color.Firebrick;
             lblStatusDot.Location = new Point(580, 224);
             lblStatusDot.Name = "lblStatusDot";
-            lblStatusDot.Size = new Size(24, 25);
+            lblStatusDot.Size = new Size(23, 25);
             lblStatusDot.TabIndex = 20;
             lblStatusDot.Text = "●";
             // 
@@ -300,7 +300,7 @@
             label10.AutoSize = true;
             label10.Location = new Point(12, 52);
             label10.Name = "label10";
-            label10.Size = new Size(99, 15);
+            label10.Size = new Size(96, 15);
             label10.TabIndex = 2;
             label10.Text = "Totem / Sistema:";
             // 
@@ -318,7 +318,7 @@
             label9.AutoSize = true;
             label9.Location = new Point(12, 25);
             label9.Name = "label9";
-            label9.Size = new Size(54, 15);
+            label9.Size = new Size(56, 15);
             label9.TabIndex = 0;
             label9.Text = "Agent ID:";
             // 
@@ -351,7 +351,7 @@
             label13.AutoSize = true;
             label13.Location = new Point(247, 25);
             label13.Name = "label13";
-            label13.Size = new Size(50, 15);
+            label13.Size = new Size(49, 15);
             label13.TabIndex = 4;
             label13.Text = "Offset Y";
             // 
@@ -387,7 +387,7 @@
             label11.AutoSize = true;
             label11.Location = new Point(20, 25);
             label11.Name = "label11";
-            label11.Size = new Size(37, 15);
+            label11.Size = new Size(36, 15);
             label11.TabIndex = 0;
             label11.Text = "Bleed";
             // 
@@ -397,17 +397,18 @@
             groupBox3.Controls.Add(label15);
             groupBox3.Controls.Add(lblLastHeartbeatValue);
             groupBox3.Controls.Add(label14);
-            groupBox3.Location = new Point(580, 262);
+            groupBox3.Location = new Point(580, 253);
             groupBox3.Name = "groupBox3";
-            groupBox3.Size = new Size(170, 79);
+            groupBox3.Size = new Size(170, 88);
             groupBox3.TabIndex = 24;
             groupBox3.TabStop = false;
             groupBox3.Text = "Monitor";
+            groupBox3.Enter += groupBox3_Enter;
             // 
             // lblLastJobValue
             // 
             lblLastJobValue.AutoEllipsis = true;
-            lblLastJobValue.Location = new Point(14, 54);
+            lblLastJobValue.Location = new Point(6, 65);
             lblLastJobValue.Name = "lblLastJobValue";
             lblLastJobValue.Size = new Size(145, 16);
             lblLastJobValue.TabIndex = 3;
@@ -416,16 +417,16 @@
             // label15
             // 
             label15.AutoSize = true;
-            label15.Location = new Point(14, 39);
+            label15.Location = new Point(6, 50);
             label15.Name = "label15";
-            label15.Size = new Size(59, 15);
+            label15.Size = new Size(48, 15);
             label15.TabIndex = 2;
             label15.Text = "Últ. job:";
             // 
             // lblLastHeartbeatValue
             // 
             lblLastHeartbeatValue.AutoEllipsis = true;
-            lblLastHeartbeatValue.Location = new Point(14, 23);
+            lblLastHeartbeatValue.Location = new Point(6, 34);
             lblLastHeartbeatValue.Name = "lblLastHeartbeatValue";
             lblLastHeartbeatValue.Size = new Size(145, 16);
             lblLastHeartbeatValue.TabIndex = 1;
@@ -434,9 +435,9 @@
             // label14
             // 
             label14.AutoSize = true;
-            label14.Location = new Point(14, 8);
+            label14.Location = new Point(6, 19);
             label14.Name = "label14";
-            label14.Size = new Size(88, 15);
+            label14.Size = new Size(81, 15);
             label14.TabIndex = 0;
             label14.Text = "Últ. heartbeat:";
             // 
@@ -475,6 +476,7 @@
             Name = "MainForm";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "CBL Print Assistant";
+            Load += MainForm_Load;
             groupBox1.ResumeLayout(false);
             groupBox1.PerformLayout();
             groupBox2.ResumeLayout(false);
