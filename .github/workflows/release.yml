@@ -1,0 +1,45 @@
+name: Build and Attach Release Asset
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore CBL.PrintAssistant/CBL.PrintAssistant.csproj
+
+      - name: Publish win-x64
+        run: dotnet publish CBL.PrintAssistant/CBL.PrintAssistant.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish/win-x64
+
+      - name: Remove appconfig if present
+        shell: pwsh
+        run: |
+          $configPath = "publish/win-x64/appconfig.json"
+          if (Test-Path $configPath) {
+            Remove-Item $configPath -Force
+          }
+
+      - name: Create zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "publish/win-x64/*" -DestinationPath "CBL.PrintAssistant-win-x64.zip" -Force
+
+      - name: Upload zip to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: CBL.PrintAssistant-win-x64.zip
