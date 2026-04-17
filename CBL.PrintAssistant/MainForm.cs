@@ -307,6 +307,7 @@ namespace CBL.PrintAssistant
                     AgentToken = txtNormalToken.Text.Trim(),
                     PrinterName = cmbNormalPrinter.SelectedItem?.ToString() ?? "",
                     RotationMode = cmbNormalRotation.SelectedItem?.ToString() ?? "Automático",
+                    Dpi = (int)nudNormalDpi.Value,
                     Bleed = (int)nudNormalBleed.Value,
                     OffsetX = (int)nudNormalOffsetX.Value,
                     OffsetY = (int)nudNormalOffsetY.Value
@@ -317,6 +318,7 @@ namespace CBL.PrintAssistant
                     AgentToken = txtStripToken.Text.Trim(),
                     PrinterName = cmbStripPrinter.SelectedItem?.ToString() ?? "",
                     RotationMode = cmbStripRotation.SelectedItem?.ToString() ?? "Automático",
+                    Dpi = (int)nudStripDpi.Value,
                     Bleed = (int)nudStripBleed.Value,
                     OffsetX = (int)nudStripOffsetX.Value,
                     OffsetY = (int)nudStripOffsetY.Value
@@ -383,10 +385,12 @@ namespace CBL.PrintAssistant
                 if (cmbStripRotation.Items.Contains(config.StripProfile.RotationMode))
                     cmbStripRotation.SelectedItem = config.StripProfile.RotationMode;
 
+                nudNormalDpi.Value = ClampNumeric(nudNormalDpi, config.NormalProfile.Dpi);
                 nudNormalBleed.Value = ClampNumeric(nudNormalBleed, config.NormalProfile.Bleed);
                 nudNormalOffsetX.Value = ClampNumeric(nudNormalOffsetX, config.NormalProfile.OffsetX);
                 nudNormalOffsetY.Value = ClampNumeric(nudNormalOffsetY, config.NormalProfile.OffsetY);
 
+                nudStripDpi.Value = ClampNumeric(nudStripDpi, config.StripProfile.Dpi);
                 nudStripBleed.Value = ClampNumeric(nudStripBleed, config.StripProfile.Bleed);
                 nudStripOffsetX.Value = ClampNumeric(nudStripOffsetX, config.StripProfile.OffsetX);
                 nudStripOffsetY.Value = ClampNumeric(nudStripOffsetY, config.StripProfile.OffsetY);
@@ -838,13 +842,13 @@ namespace CBL.PrintAssistant
             using Bitmap preparedImage = new Bitmap(originalImage);
 
             ApplyRotation(preparedImage, profile.RotationMode);
-            preparedImage.SetResolution(300, 300);
+            preparedImage.SetResolution(profile.Dpi, profile.Dpi);
 
             using Bitmap finalImage = isStripProfile
-                ? CreateStripSheet(preparedImage)
+                ? CreateStripSheet(preparedImage, profile.Dpi)
                 : new Bitmap(preparedImage);
 
-            finalImage.SetResolution(300, 300);
+            finalImage.SetResolution(profile.Dpi, profile.Dpi);
 
             PrintDocument printDocument = new PrintDocument();
             printDocument.PrinterSettings.PrinterName = profile.PrinterName;
@@ -905,14 +909,14 @@ namespace CBL.PrintAssistant
             printDocument.Print();
         }
 
-        private Bitmap CreateStripSheet(Bitmap stripImage)
+        private Bitmap CreateStripSheet(Bitmap stripImage, int dpi)
         {
             const int canvasWidth = 1800;
             const int canvasHeight = 1200;
             const int gap = 12;
 
             Bitmap canvas = new Bitmap(canvasWidth, canvasHeight);
-            canvas.SetResolution(300, 300);
+            canvas.SetResolution(dpi, dpi);
 
             using Graphics graphics = Graphics.FromImage(canvas);
             graphics.Clear(Color.White);

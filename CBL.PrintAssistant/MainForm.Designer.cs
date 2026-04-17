@@ -33,6 +33,8 @@ namespace CBL.PrintAssistant
             lblActiveProfile = new Label();
             cmbActiveProfile = new ComboBox();
             groupNormal = new GroupBox();
+            nudNormalDpi = new NumericUpDown();
+            label27 = new Label();
             lblNormalSystemPrinterValue = new Label();
             label17 = new Label();
             lblNormalStatusText = new Label();
@@ -53,6 +55,8 @@ namespace CBL.PrintAssistant
             txtNormalAgentId = new TextBox();
             label9 = new Label();
             groupStrip = new GroupBox();
+            nudStripDpi = new NumericUpDown();
+            label28 = new Label();
             lblStripSystemPrinterValue = new Label();
             label18 = new Label();
             lblStripStatusText = new Label();
@@ -78,10 +82,12 @@ namespace CBL.PrintAssistant
             ((System.ComponentModel.ISupportInitialize)nudNormalOffsetY).BeginInit();
             ((System.ComponentModel.ISupportInitialize)nudNormalOffsetX).BeginInit();
             ((System.ComponentModel.ISupportInitialize)nudNormalBleed).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)nudNormalDpi).BeginInit();
             groupStrip.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)nudStripOffsetY).BeginInit();
             ((System.ComponentModel.ISupportInitialize)nudStripOffsetX).BeginInit();
             ((System.ComponentModel.ISupportInitialize)nudStripBleed).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)nudStripDpi).BeginInit();
             SuspendLayout();
             // 
             // label1
@@ -213,6 +219,8 @@ namespace CBL.PrintAssistant
             // 
             // groupNormal
             // 
+            groupNormal.Controls.Add(nudNormalDpi);
+            groupNormal.Controls.Add(label27);
             groupNormal.Controls.Add(lblNormalSystemPrinterValue);
             groupNormal.Controls.Add(label17);
             groupNormal.Controls.Add(lblNormalStatusText);
@@ -239,6 +247,27 @@ namespace CBL.PrintAssistant
             groupNormal.TabStop = false;
             groupNormal.Text = "Perfil Normal";
             // remaining normal controls same positions
+            // 
+            // label27
+            // 
+            label27.AutoSize = true;
+            label27.Location = new Point(304, 24);
+            label27.Name = "label27";
+            label27.Size = new Size(25, 15);
+            label27.TabIndex = 20;
+            label27.Text = "DPI";
+            // 
+            // nudNormalDpi
+            // 
+            nudNormalDpi.Location = new Point(304, 42);
+            nudNormalDpi.Minimum = new decimal(new int[] { 150, 0, 0, 0 });
+            nudNormalDpi.Maximum = new decimal(new int[] { 600, 0, 0, 0 });
+            nudNormalDpi.Increment = new decimal(new int[] { 50, 0, 0, 0 });
+            nudNormalDpi.Name = "nudNormalDpi";
+            nudNormalDpi.Size = new Size(77, 23);
+            nudNormalDpi.TabIndex = 19;
+            nudNormalDpi.Value = new decimal(new int[] { 300, 0, 0, 0 });
+            // 
             lblNormalSystemPrinterValue.AutoEllipsis = true;
             lblNormalSystemPrinterValue.Location = new Point(126, 224);
             lblNormalSystemPrinterValue.Name = "lblNormalSystemPrinterValue";
@@ -354,8 +383,31 @@ namespace CBL.PrintAssistant
             label9.TabIndex = 0;
             label9.Text = "Agent ID";
             // 
+            // 
+            // label28
+            // 
+            label28.AutoSize = true;
+            label28.Location = new Point(304, 24);
+            label28.Name = "label28";
+            label28.Size = new Size(25, 15);
+            label28.TabIndex = 20;
+            label28.Text = "DPI";
+            // 
+            // nudStripDpi
+            // 
+            nudStripDpi.Location = new Point(304, 42);
+            nudStripDpi.Minimum = new decimal(new int[] { 150, 0, 0, 0 });
+            nudStripDpi.Maximum = new decimal(new int[] { 600, 0, 0, 0 });
+            nudStripDpi.Increment = new decimal(new int[] { 50, 0, 0, 0 });
+            nudStripDpi.Name = "nudStripDpi";
+            nudStripDpi.Size = new Size(77, 23);
+            nudStripDpi.TabIndex = 19;
+            nudStripDpi.Value = new decimal(new int[] { 300, 0, 0, 0 });
+            // 
             // groupStrip
             // 
+            groupStrip.Controls.Add(nudStripDpi);
+            groupStrip.Controls.Add(label28);
             groupStrip.Controls.Add(lblStripSystemPrinterValue);
             groupStrip.Controls.Add(label18);
             groupStrip.Controls.Add(lblStripStatusText);
@@ -547,11 +599,13 @@ namespace CBL.PrintAssistant
             ((System.ComponentModel.ISupportInitialize)nudNormalOffsetY).EndInit();
             ((System.ComponentModel.ISupportInitialize)nudNormalOffsetX).EndInit();
             ((System.ComponentModel.ISupportInitialize)nudNormalBleed).EndInit();
+            ((System.ComponentModel.ISupportInitialize)nudNormalDpi).EndInit();
             groupStrip.ResumeLayout(false);
             groupStrip.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)nudStripOffsetY).EndInit();
             ((System.ComponentModel.ISupportInitialize)nudStripOffsetX).EndInit();
             ((System.ComponentModel.ISupportInitialize)nudStripBleed).EndInit();
+            ((System.ComponentModel.ISupportInitialize)nudStripDpi).EndInit();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -581,6 +635,7 @@ namespace CBL.PrintAssistant
         private TextBox txtNormalToken;
         private ComboBox cmbNormalPrinter;
         private ComboBox cmbNormalRotation;
+        private NumericUpDown nudNormalDpi;
         private NumericUpDown nudNormalBleed;
         private NumericUpDown nudNormalOffsetX;
         private NumericUpDown nudNormalOffsetY;
@@ -592,6 +647,7 @@ namespace CBL.PrintAssistant
         private TextBox txtStripToken;
         private ComboBox cmbStripPrinter;
         private ComboBox cmbStripRotation;
+        private NumericUpDown nudStripDpi;
         private NumericUpDown nudStripBleed;
         private NumericUpDown nudStripOffsetX;
         private NumericUpDown nudStripOffsetY;
@@ -618,5 +674,7 @@ namespace CBL.PrintAssistant
         private Label label24;
         private Label label25;
         private Label label26;
+        private Label label27;
+        private Label label28;
     }
 }
