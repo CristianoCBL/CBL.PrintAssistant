@@ -1,11 +1,4 @@
-using System;
-using System.Drawing;
 using System.Drawing.Printing;
-using System.IO;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 using Microsoft.Win32;
 using Newtonsoft.Json;
 
@@ -32,6 +25,8 @@ namespace CBL.PrintAssistant
         private const string StartupRegistryName = "CBL.PrintAssistant";
         private const string GitHubOwner = "CristianoCBL";
         private const string GitHubRepo = "CBL.PrintAssistant";
+        private const string ProfileNormal = "Normal";
+        private const string ProfileStrip = "Tirinha";
 
         public MainForm()
         {
@@ -40,6 +35,7 @@ namespace CBL.PrintAssistant
             _configPath = Path.Combine(Application.StartupPath, "appconfig.json");
 
             ConfigureRotationCombos();
+            ConfigureProfileSelector();
             InitializeTray();
             SetStatus(lblNormalStatusDot, lblNormalStatusText, false);
             SetStatus(lblStripStatusDot, lblStripStatusText, false);
@@ -48,10 +44,11 @@ namespace CBL.PrintAssistant
             txtStripAgentId.Text = Environment.MachineName + "-strip";
 
             AddLog("Aplicativo iniciado.");
-            AddLog("Perfis: Normal e Tirinha.");
+            AddLog("Modo de uso: Normal ou Tirinha (um perfil por vez).");
 
             LoadInstalledPrinters();
             LoadConfig();
+            UpdateActiveProfileUi();
 
             Shown += MainForm_Shown;
             Resize += MainForm_Resize;
@@ -72,6 +69,35 @@ namespace CBL.PrintAssistant
             cmbStripRotation.SelectedIndex = 0;
         }
 
+        private void ConfigureProfileSelector()
+        {
+            cmbActiveProfile.Items.Clear();
+            cmbActiveProfile.Items.Add(ProfileNormal);
+            cmbActiveProfile.Items.Add(ProfileStrip);
+            cmbActiveProfile.SelectedIndex = 0;
+        }
+
+        private string GetSelectedProfileMode()
+        {
+            return string.Equals(cmbActiveProfile.SelectedItem?.ToString(), ProfileStrip, StringComparison.OrdinalIgnoreCase)
+                ? ProfileStrip
+                : ProfileNormal;
+        }
+
+        private void cmbActiveProfile_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            UpdateActiveProfileUi();
+        }
+
+        private void UpdateActiveProfileUi()
+        {
+            bool normalSelected = GetSelectedProfileMode() == ProfileNormal;
+
+            groupNormal.Enabled = normalSelected;
+            groupStrip.Enabled = !normalSelected;
+            btnStartAll.Text = normalSelected ? "Iniciar Normal" : "Iniciar Tirinha";
+        }
+
         private void InitializeTray()
         {
             _trayMenu = new ContextMenuStrip();
@@ -79,8 +105,8 @@ namespace CBL.PrintAssistant
             var openItem = new ToolStripMenuItem("Abrir");
             openItem.Click += (s, e) => ShowFromTray();
 
-            var startItem = new ToolStripMenuItem("Iniciar Escuta");
-            startItem.Click += async (s, e) => await StartAllAsync();
+            var startItem = new ToolStripMenuItem("Iniciar Perfil Selecionado");
+            startItem.Click += async (s, e) => await StartSelectedProfileAsync();
 
             var stopItem = new ToolStripMenuItem("Parar Escuta");
             stopItem.Click += (s, e) => StopAll();
@@ -267,6 +293,7 @@ namespace CBL.PrintAssistant
                 UnitId = txtUnitId.Text.Trim(),
                 KioskId = txtKioskId.Text.Trim(),
                 StartWithWindows = chkStartWithWindows.Checked,
+                ActiveProfile = GetSelectedProfileMode(),
                 NormalProfile = new PrintProfileConfig
                 {
                     AgentId = txtNormalAgentId.Text.Trim(),
@@ -357,7 +384,13 @@ namespace CBL.PrintAssistant
                 nudStripOffsetX.Value = ClampNumeric(nudStripOffsetX, config.StripProfile.OffsetX);
                 nudStripOffsetY.Value = ClampNumeric(nudStripOffsetY, config.StripProfile.OffsetY);
 
+                if (cmbActiveProfile.Items.Contains(config.ActiveProfile))
+                    cmbActiveProfile.SelectedItem = config.ActiveProfile;
+                else
+                    cmbActiveProfile.SelectedItem = ProfileNormal;
+
                 TryRestoreSavedPrinters();
+                UpdateActiveProfileUi();
 
                 AddLog("Configuração carregada.");
             }
@@ -400,7 +433,7 @@ namespace CBL.PrintAssistant
 
         private async void btnStartAll_Click(object sender, EventArgs e)
         {
-            await StartAllAsync();
+            await StartSelectedProfileAsync();
         }
 
         private void btnStopAll_Click(object sender, EventArgs e)
@@ -408,15 +441,22 @@ namespace CBL.PrintAssistant
             StopAll();
         }
 
-        private async Task StartAllAsync()
+        private async Task StartSelectedProfileAsync()
         {
             var config = GetConfigFromForm();
 
             ValidateGeneralConfig(config);
-            ValidateProfile("Normal", config.NormalProfile);
-            ValidateProfile("Tirinha", config.StripProfile);
 
-            await StartNormalAsync(config);
+            if (GetSelectedProfileMode() == ProfileNormal)
+            {
+                ValidateProfile(ProfileNormal, config.NormalProfile);
+                StopStrip();
+                await StartNormalAsync(config);
+                return;
+            }
+
+            ValidateProfile(ProfileStrip, config.StripProfile);
+            StopNormal();
             await StartStripAsync(config);
         }
 
@@ -466,10 +506,10 @@ namespace CBL.PrintAssistant
                 _normalListening = true;
                 SetStatus(lblNormalStatusDot, lblNormalStatusText, true);
 
-                AddLog("[Normal] Escuta iniciada.");
+                AddLog($"[Normal] Escuta iniciada. Agent: {profile.AgentId}");
 
                 _ = ListenLoopAsync(
-                    "Normal",
+                    ProfileNormal,
                     config,
                     profile,
                     _normalCts.Token,
@@ -527,10 +567,10 @@ namespace CBL.PrintAssistant
                 _stripListening = true;
                 SetStatus(lblStripStatusDot, lblStripStatusText, true);
 
-                AddLog("[Tirinha] Escuta iniciada.");
+                AddLog($"[Tirinha] Escuta iniciada. Agent: {profile.AgentId}");
 
                 _ = ListenLoopAsync(
-                    "Tirinha",
+                    ProfileStrip,
                     config,
                     profile,
                     _stripCts.Token,
@@ -702,9 +742,11 @@ namespace CBL.PrintAssistant
                 if (string.IsNullOrWhiteSpace(job.ImageUrl))
                     throw new Exception("O job não trouxe image_url.");
 
+                bool isStripProfile = string.Equals(profileName, ProfileStrip, StringComparison.OrdinalIgnoreCase);
+
                 for (int i = 0; i < Math.Max(1, job.Copies); i++)
                 {
-                    await PrintImageFromUrlInternalAsync(job.ImageUrl, profile, cancellationToken);
+                    await PrintImageFromUrlInternalAsync(job.ImageUrl, profile, isStripProfile, cancellationToken);
                 }
 
                 await _printAgentService.SendAsync(
@@ -748,6 +790,7 @@ namespace CBL.PrintAssistant
         private async Task PrintImageFromUrlInternalAsync(
             string imageUrl,
             PrintProfileConfig profile,
+            bool isStripProfile,
             CancellationToken cancellationToken)
         {
             string tempFilePath;
@@ -767,7 +810,7 @@ namespace CBL.PrintAssistant
 
             try
             {
-                PrintImageFromFile(tempFilePath, profile);
+                PrintImageFromFile(tempFilePath, profile, isStripProfile);
             }
             finally
             {
@@ -782,13 +825,19 @@ namespace CBL.PrintAssistant
             }
         }
 
-        private void PrintImageFromFile(string imagePath, PrintProfileConfig profile)
+        private void PrintImageFromFile(string imagePath, PrintProfileConfig profile, bool isStripProfile)
         {
             using Image originalImage = Image.FromFile(imagePath);
             using Bitmap preparedImage = new Bitmap(originalImage);
 
             ApplyRotation(preparedImage, profile.RotationMode);
             preparedImage.SetResolution(300, 300);
+
+            using Bitmap finalImage = isStripProfile
+                ? CreateStripSheet(preparedImage)
+                : new Bitmap(preparedImage);
+
+            finalImage.SetResolution(300, 300);
 
             PrintDocument printDocument = new PrintDocument();
             printDocument.PrinterSettings.PrinterName = profile.PrinterName;
@@ -814,7 +863,7 @@ namespace CBL.PrintAssistant
             if (selectedPaper == null)
                 selectedPaper = new PaperSize("4x6", 400, 600);
 
-            bool landscape = preparedImage.Width >= preparedImage.Height;
+            bool landscape = finalImage.Width >= finalImage.Height;
 
             printDocument.DefaultPageSettings.PaperSize = selectedPaper;
             printDocument.DefaultPageSettings.Landscape = landscape;
@@ -842,11 +891,68 @@ namespace CBL.PrintAssistant
                     ev.PageBounds.Height + (int)Math.Round(hardY * 2) + (bleed * 2)
                 );
 
-                ev.Graphics.DrawImage(preparedImage, drawRect);
+                ev.Graphics.DrawImage(finalImage, drawRect);
                 ev.HasMorePages = false;
             };
 
             printDocument.Print();
+        }
+
+        private Bitmap CreateStripSheet(Bitmap stripImage)
+        {
+            const int canvasWidth = 1800;
+            const int canvasHeight = 1200;
+            const int gap = 12;
+
+            Bitmap canvas = new Bitmap(canvasWidth, canvasHeight);
+            canvas.SetResolution(300, 300);
+
+            using Graphics graphics = Graphics.FromImage(canvas);
+            graphics.Clear(Color.White);
+            graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+            graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+            graphics.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+
+            using Bitmap stripCopy = new Bitmap(stripImage);
+            if (stripCopy.Height >= stripCopy.Width)
+                stripCopy.RotateFlip(RotateFlipType.Rotate90FlipNone);
+
+            Rectangle topSlot = new Rectangle(0, 0, canvasWidth, (canvasHeight / 2) - (gap / 2));
+            Rectangle bottomSlot = new Rectangle(0, (canvasHeight / 2) + (gap / 2), canvasWidth, (canvasHeight / 2) - (gap / 2));
+
+            DrawImageContain(graphics, stripCopy, topSlot);
+            DrawImageContain(graphics, stripCopy, bottomSlot);
+
+            return canvas;
+        }
+
+        private void DrawImageContain(Graphics graphics, Image image, Rectangle bounds)
+        {
+            float imageRatio = (float)image.Width / image.Height;
+            float boundsRatio = (float)bounds.Width / bounds.Height;
+
+            int drawWidth;
+            int drawHeight;
+
+            if (imageRatio > boundsRatio)
+            {
+                drawWidth = bounds.Width;
+                drawHeight = (int)Math.Round(bounds.Width / imageRatio);
+            }
+            else
+            {
+                drawHeight = bounds.Height;
+                drawWidth = (int)Math.Round(bounds.Height * imageRatio);
+            }
+
+            Rectangle target = new Rectangle(
+                bounds.X + ((bounds.Width - drawWidth) / 2),
+                bounds.Y + ((bounds.Height - drawHeight) / 2),
+                drawWidth,
+                drawHeight);
+
+            graphics.DrawImage(image, target);
         }
 
         private void ApplyRotation(Bitmap bitmap, string rotationMode)

@@ -30,6 +30,8 @@
             btnStartAll = new Button();
             btnStopAll = new Button();
             btnCheckUpdates = new Button();
+            lblActiveProfile = new Label();
+            cmbActiveProfile = new ComboBox();
             groupNormal = new GroupBox();
             lblNormalSystemPrinterValue = new Label();
             label17 = new Label();
@@ -162,17 +164,17 @@
             // 
             // btnStartAll
             // 
-            btnStartAll.Location = new Point(482, 82);
+            btnStartAll.Location = new Point(482, 117);
             btnStartAll.Name = "btnStartAll";
             btnStartAll.Size = new Size(174, 28);
             btnStartAll.TabIndex = 9;
-            btnStartAll.Text = "Iniciar Escuta";
+            btnStartAll.Text = "Iniciar Normal";
             btnStartAll.UseVisualStyleBackColor = true;
             btnStartAll.Click += btnStartAll_Click;
             // 
             // btnStopAll
             // 
-            btnStopAll.Location = new Point(662, 82);
+            btnStopAll.Location = new Point(662, 117);
             btnStopAll.Name = "btnStopAll";
             btnStopAll.Size = new Size(174, 28);
             btnStopAll.TabIndex = 10;
@@ -182,13 +184,32 @@
             // 
             // btnCheckUpdates
             // 
-            btnCheckUpdates.Location = new Point(482, 117);
+            btnCheckUpdates.Location = new Point(482, 152);
             btnCheckUpdates.Name = "btnCheckUpdates";
             btnCheckUpdates.Size = new Size(354, 28);
             btnCheckUpdates.TabIndex = 11;
             btnCheckUpdates.Text = "Verificar Atualização";
             btnCheckUpdates.UseVisualStyleBackColor = true;
             btnCheckUpdates.Click += btnCheckUpdates_Click;
+            // 
+            // lblActiveProfile
+            // 
+            lblActiveProfile.AutoSize = true;
+            lblActiveProfile.Location = new Point(482, 71);
+            lblActiveProfile.Name = "lblActiveProfile";
+            lblActiveProfile.Size = new Size(80, 15);
+            lblActiveProfile.TabIndex = 12;
+            lblActiveProfile.Text = "Perfil em uso";
+            // 
+            // cmbActiveProfile
+            // 
+            cmbActiveProfile.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbActiveProfile.FormattingEnabled = true;
+            cmbActiveProfile.Location = new Point(482, 89);
+            cmbActiveProfile.Name = "cmbActiveProfile";
+            cmbActiveProfile.Size = new Size(354, 23);
+            cmbActiveProfile.TabIndex = 13;
+            cmbActiveProfile.SelectedIndexChanged += cmbActiveProfile_SelectedIndexChanged;
             // 
             // groupNormal
             // 
@@ -211,33 +232,25 @@
             groupNormal.Controls.Add(label10);
             groupNormal.Controls.Add(txtNormalAgentId);
             groupNormal.Controls.Add(label9);
-            groupNormal.Location = new Point(18, 157);
+            groupNormal.Location = new Point(18, 192);
             groupNormal.Name = "groupNormal";
             groupNormal.Size = new Size(400, 257);
-            groupNormal.TabIndex = 12;
+            groupNormal.TabIndex = 14;
             groupNormal.TabStop = false;
-            groupNormal.Text = "Perfil 1 - Foto Normal";
-            // 
-            // lblNormalSystemPrinterValue
-            // 
+            groupNormal.Text = "Perfil Normal";
+            // remaining normal controls same positions
             lblNormalSystemPrinterValue.AutoEllipsis = true;
             lblNormalSystemPrinterValue.Location = new Point(126, 224);
             lblNormalSystemPrinterValue.Name = "lblNormalSystemPrinterValue";
             lblNormalSystemPrinterValue.Size = new Size(255, 18);
             lblNormalSystemPrinterValue.TabIndex = 18;
             lblNormalSystemPrinterValue.Text = "-";
-            // 
-            // label17
-            // 
             label17.AutoSize = true;
             label17.Location = new Point(16, 224);
             label17.Name = "label17";
             label17.Size = new Size(99, 15);
             label17.TabIndex = 17;
             label17.Text = "Totem / Sistema:";
-            // 
-            // lblNormalStatusText
-            // 
             lblNormalStatusText.AutoSize = true;
             lblNormalStatusText.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             lblNormalStatusText.Location = new Point(160, 25);
@@ -245,9 +258,6 @@
             lblNormalStatusText.Size = new Size(47, 15);
             lblNormalStatusText.TabIndex = 16;
             lblNormalStatusText.Text = "Inativo";
-            // 
-            // lblNormalStatusDot
-            // 
             lblNormalStatusDot.AutoSize = true;
             lblNormalStatusDot.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
             lblNormalStatusDot.ForeColor = Color.Firebrick;
@@ -256,132 +266,87 @@
             lblNormalStatusDot.Size = new Size(20, 21);
             lblNormalStatusDot.TabIndex = 15;
             lblNormalStatusDot.Text = "●";
-            // 
-            // label16
-            // 
             label16.AutoSize = true;
             label16.Location = new Point(16, 25);
             label16.Name = "label16";
             label16.Size = new Size(39, 15);
             label16.TabIndex = 14;
             label16.Text = "Status";
-            // 
-            // nudNormalOffsetY
-            // 
             nudNormalOffsetY.Location = new Point(304, 187);
             nudNormalOffsetY.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
             nudNormalOffsetY.Minimum = new decimal(new int[] { 50, 0, 0, int.MinValue });
             nudNormalOffsetY.Name = "nudNormalOffsetY";
             nudNormalOffsetY.Size = new Size(77, 23);
             nudNormalOffsetY.TabIndex = 13;
-            // 
-            // label15
-            // 
             label15.AutoSize = true;
             label15.Location = new Point(304, 169);
             label15.Name = "label15";
             label15.Size = new Size(50, 15);
             label15.TabIndex = 12;
             label15.Text = "Offset Y";
-            // 
-            // nudNormalOffsetX
-            // 
             nudNormalOffsetX.Location = new Point(210, 187);
             nudNormalOffsetX.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
             nudNormalOffsetX.Minimum = new decimal(new int[] { 50, 0, 0, int.MinValue });
             nudNormalOffsetX.Name = "nudNormalOffsetX";
             nudNormalOffsetX.Size = new Size(77, 23);
             nudNormalOffsetX.TabIndex = 11;
-            // 
-            // label14
-            // 
             label14.AutoSize = true;
             label14.Location = new Point(210, 169);
             label14.Name = "label14";
             label14.Size = new Size(49, 15);
             label14.TabIndex = 10;
             label14.Text = "Offset X";
-            // 
-            // nudNormalBleed
-            // 
             nudNormalBleed.Location = new Point(116, 187);
             nudNormalBleed.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
             nudNormalBleed.Name = "nudNormalBleed";
             nudNormalBleed.Size = new Size(77, 23);
             nudNormalBleed.TabIndex = 9;
             nudNormalBleed.Value = new decimal(new int[] { 8, 0, 0, 0 });
-            // 
-            // label13
-            // 
             label13.AutoSize = true;
             label13.Location = new Point(116, 169);
             label13.Name = "label13";
             label13.Size = new Size(37, 15);
             label13.TabIndex = 8;
             label13.Text = "Bleed";
-            // 
-            // cmbNormalRotation
-            // 
             cmbNormalRotation.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbNormalRotation.FormattingEnabled = true;
             cmbNormalRotation.Location = new Point(16, 187);
             cmbNormalRotation.Name = "cmbNormalRotation";
             cmbNormalRotation.Size = new Size(87, 23);
             cmbNormalRotation.TabIndex = 7;
-            // 
-            // label12
-            // 
             label12.AutoSize = true;
             label12.Location = new Point(16, 169);
             label12.Name = "label12";
             label12.Size = new Size(50, 15);
             label12.TabIndex = 6;
             label12.Text = "Rotação";
-            // 
-            // cmbNormalPrinter
-            // 
             cmbNormalPrinter.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbNormalPrinter.FormattingEnabled = true;
             cmbNormalPrinter.Location = new Point(16, 134);
             cmbNormalPrinter.Name = "cmbNormalPrinter";
             cmbNormalPrinter.Size = new Size(365, 23);
             cmbNormalPrinter.TabIndex = 5;
-            // 
-            // label11
-            // 
             label11.AutoSize = true;
             label11.Location = new Point(16, 116);
             label11.Name = "label11";
             label11.Size = new Size(115, 15);
             label11.TabIndex = 4;
             label11.Text = "Impressora Windows";
-            // 
-            // txtNormalToken
-            // 
             txtNormalToken.Location = new Point(16, 86);
             txtNormalToken.Name = "txtNormalToken";
             txtNormalToken.Size = new Size(365, 23);
             txtNormalToken.TabIndex = 3;
             txtNormalToken.UseSystemPasswordChar = true;
-            // 
-            // label10
-            // 
             label10.AutoSize = true;
             label10.Location = new Point(16, 68);
             label10.Name = "label10";
             label10.Size = new Size(74, 15);
             label10.TabIndex = 2;
             label10.Text = "Agent Token";
-            // 
-            // txtNormalAgentId
-            // 
             txtNormalAgentId.Location = new Point(16, 42);
             txtNormalAgentId.Name = "txtNormalAgentId";
             txtNormalAgentId.Size = new Size(107, 23);
             txtNormalAgentId.TabIndex = 1;
-            // 
-            // label9
-            // 
             label9.AutoSize = true;
             label9.Location = new Point(16, 24);
             label9.Name = "label9";
@@ -410,33 +375,24 @@
             groupStrip.Controls.Add(label25);
             groupStrip.Controls.Add(txtStripAgentId);
             groupStrip.Controls.Add(label26);
-            groupStrip.Location = new Point(436, 157);
+            groupStrip.Location = new Point(436, 192);
             groupStrip.Name = "groupStrip";
             groupStrip.Size = new Size(400, 257);
-            groupStrip.TabIndex = 13;
+            groupStrip.TabIndex = 15;
             groupStrip.TabStop = false;
-            groupStrip.Text = "Perfil 2 - Tirinha / Cinema";
-            // 
-            // lblStripSystemPrinterValue
-            // 
+            groupStrip.Text = "Perfil Tirinha / Cinema";
             lblStripSystemPrinterValue.AutoEllipsis = true;
             lblStripSystemPrinterValue.Location = new Point(126, 224);
             lblStripSystemPrinterValue.Name = "lblStripSystemPrinterValue";
             lblStripSystemPrinterValue.Size = new Size(255, 18);
             lblStripSystemPrinterValue.TabIndex = 18;
             lblStripSystemPrinterValue.Text = "-";
-            // 
-            // label18
-            // 
             label18.AutoSize = true;
             label18.Location = new Point(16, 224);
             label18.Name = "label18";
             label18.Size = new Size(99, 15);
             label18.TabIndex = 17;
             label18.Text = "Totem / Sistema:";
-            // 
-            // lblStripStatusText
-            // 
             lblStripStatusText.AutoSize = true;
             lblStripStatusText.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             lblStripStatusText.Location = new Point(160, 25);
@@ -444,9 +400,6 @@
             lblStripStatusText.Size = new Size(47, 15);
             lblStripStatusText.TabIndex = 16;
             lblStripStatusText.Text = "Inativo";
-            // 
-            // lblStripStatusDot
-            // 
             lblStripStatusDot.AutoSize = true;
             lblStripStatusDot.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
             lblStripStatusDot.ForeColor = Color.Firebrick;
@@ -455,132 +408,87 @@
             lblStripStatusDot.Size = new Size(20, 21);
             lblStripStatusDot.TabIndex = 15;
             lblStripStatusDot.Text = "●";
-            // 
-            // label19
-            // 
             label19.AutoSize = true;
             label19.Location = new Point(16, 25);
             label19.Name = "label19";
             label19.Size = new Size(39, 15);
             label19.TabIndex = 14;
             label19.Text = "Status";
-            // 
-            // nudStripOffsetY
-            // 
             nudStripOffsetY.Location = new Point(304, 187);
             nudStripOffsetY.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
             nudStripOffsetY.Minimum = new decimal(new int[] { 50, 0, 0, int.MinValue });
             nudStripOffsetY.Name = "nudStripOffsetY";
             nudStripOffsetY.Size = new Size(77, 23);
             nudStripOffsetY.TabIndex = 13;
-            // 
-            // label20
-            // 
             label20.AutoSize = true;
             label20.Location = new Point(304, 169);
             label20.Name = "label20";
             label20.Size = new Size(50, 15);
             label20.TabIndex = 12;
             label20.Text = "Offset Y";
-            // 
-            // nudStripOffsetX
-            // 
             nudStripOffsetX.Location = new Point(210, 187);
             nudStripOffsetX.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
             nudStripOffsetX.Minimum = new decimal(new int[] { 50, 0, 0, int.MinValue });
             nudStripOffsetX.Name = "nudStripOffsetX";
             nudStripOffsetX.Size = new Size(77, 23);
             nudStripOffsetX.TabIndex = 11;
-            // 
-            // label21
-            // 
             label21.AutoSize = true;
             label21.Location = new Point(210, 169);
             label21.Name = "label21";
             label21.Size = new Size(49, 15);
             label21.TabIndex = 10;
             label21.Text = "Offset X";
-            // 
-            // nudStripBleed
-            // 
             nudStripBleed.Location = new Point(116, 187);
             nudStripBleed.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
             nudStripBleed.Name = "nudStripBleed";
             nudStripBleed.Size = new Size(77, 23);
             nudStripBleed.TabIndex = 9;
             nudStripBleed.Value = new decimal(new int[] { 8, 0, 0, 0 });
-            // 
-            // label22
-            // 
             label22.AutoSize = true;
             label22.Location = new Point(116, 169);
             label22.Name = "label22";
             label22.Size = new Size(37, 15);
             label22.TabIndex = 8;
             label22.Text = "Bleed";
-            // 
-            // cmbStripRotation
-            // 
             cmbStripRotation.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbStripRotation.FormattingEnabled = true;
             cmbStripRotation.Location = new Point(16, 187);
             cmbStripRotation.Name = "cmbStripRotation";
             cmbStripRotation.Size = new Size(87, 23);
             cmbStripRotation.TabIndex = 7;
-            // 
-            // label23
-            // 
             label23.AutoSize = true;
             label23.Location = new Point(16, 169);
             label23.Name = "label23";
             label23.Size = new Size(50, 15);
             label23.TabIndex = 6;
             label23.Text = "Rotação";
-            // 
-            // cmbStripPrinter
-            // 
             cmbStripPrinter.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbStripPrinter.FormattingEnabled = true;
             cmbStripPrinter.Location = new Point(16, 134);
             cmbStripPrinter.Name = "cmbStripPrinter";
             cmbStripPrinter.Size = new Size(365, 23);
             cmbStripPrinter.TabIndex = 5;
-            // 
-            // label24
-            // 
             label24.AutoSize = true;
             label24.Location = new Point(16, 116);
             label24.Name = "label24";
             label24.Size = new Size(115, 15);
             label24.TabIndex = 4;
             label24.Text = "Impressora Windows";
-            // 
-            // txtStripToken
-            // 
             txtStripToken.Location = new Point(16, 86);
             txtStripToken.Name = "txtStripToken";
             txtStripToken.Size = new Size(365, 23);
             txtStripToken.TabIndex = 3;
             txtStripToken.UseSystemPasswordChar = true;
-            // 
-            // label25
-            // 
             label25.AutoSize = true;
             label25.Location = new Point(16, 68);
             label25.Name = "label25";
             label25.Size = new Size(74, 15);
             label25.TabIndex = 2;
             label25.Text = "Agent Token";
-            // 
-            // txtStripAgentId
-            // 
             txtStripAgentId.Location = new Point(16, 42);
             txtStripAgentId.Name = "txtStripAgentId";
             txtStripAgentId.Size = new Size(107, 23);
             txtStripAgentId.TabIndex = 1;
-            // 
-            // label26
-            // 
             label26.AutoSize = true;
             label26.Location = new Point(16, 24);
             label26.Name = "label26";
@@ -591,30 +499,32 @@
             // label6
             // 
             label6.AutoSize = true;
-            label6.Location = new Point(18, 426);
+            label6.Location = new Point(18, 461);
             label6.Name = "label6";
             label6.Size = new Size(31, 15);
-            label6.TabIndex = 14;
+            label6.TabIndex = 16;
             label6.Text = "Logs";
             // 
             // listBox1
             // 
             listBox1.FormattingEnabled = true;
             listBox1.ItemHeight = 15;
-            listBox1.Location = new Point(18, 444);
+            listBox1.Location = new Point(18, 479);
             listBox1.Name = "listBox1";
-            listBox1.Size = new Size(818, 199);
-            listBox1.TabIndex = 15;
+            listBox1.Size = new Size(818, 154);
+            listBox1.TabIndex = 17;
             // 
             // MainForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(854, 661);
+            ClientSize = new Size(854, 651);
             Controls.Add(listBox1);
             Controls.Add(label6);
             Controls.Add(groupStrip);
             Controls.Add(groupNormal);
+            Controls.Add(cmbActiveProfile);
+            Controls.Add(lblActiveProfile);
             Controls.Add(btnCheckUpdates);
             Controls.Add(btnStopAll);
             Controls.Add(btnStartAll);
@@ -660,6 +570,8 @@
         private Button btnStartAll;
         private Button btnStopAll;
         private Button btnCheckUpdates;
+        private Label lblActiveProfile;
+        private ComboBox cmbActiveProfile;
         private GroupBox groupNormal;
         private GroupBox groupStrip;
         private Label label6;

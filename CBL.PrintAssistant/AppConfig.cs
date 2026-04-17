@@ -6,6 +6,7 @@
         public string UnitId { get; set; } = "";
         public string KioskId { get; set; } = "";
         public bool StartWithWindows { get; set; }
+        public string ActiveProfile { get; set; } = "Normal";
 
         public PrintProfileConfig NormalProfile { get; set; } = new PrintProfileConfig();
         public PrintProfileConfig StripProfile { get; set; } = new PrintProfileConfig();
