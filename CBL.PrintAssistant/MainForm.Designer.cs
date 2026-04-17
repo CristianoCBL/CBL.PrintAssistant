@@ -1,4 +1,4 @@
-﻿namespace CBL.PrintAssistant
+namespace CBL.PrintAssistant
 {
     partial class MainForm
     {
