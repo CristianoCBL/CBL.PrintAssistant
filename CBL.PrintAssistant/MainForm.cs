@@ -3,7 +3,6 @@ using System.Drawing;
 using System.Drawing.Printing;
 using System.IO;
 using System.Net.Http;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -15,14 +14,18 @@ namespace CBL.PrintAssistant
     public partial class MainForm : Form
     {
         private readonly string _configPath;
-        private AppConfig? _currentConfig;
         private readonly PrintAgentService _printAgentService = new PrintAgentService();
         private readonly UpdateService _updateService = new UpdateService();
 
-        private CancellationTokenSource? _listenerCts;
-        private bool _isListening;
-        private bool _allowClose;
+        private AppConfig? _currentConfig;
 
+        private CancellationTokenSource? _normalCts;
+        private CancellationTokenSource? _stripCts;
+
+        private bool _normalListening;
+        private bool _stripListening;
+
+        private bool _allowClose;
         private NotifyIcon? _trayIcon;
         private ContextMenuStrip? _trayMenu;
 
@@ -36,14 +39,16 @@ namespace CBL.PrintAssistant
 
             _configPath = Path.Combine(Application.StartupPath, "appconfig.json");
 
-            ConfigureRotationCombo();
-            UpdateStatusUi(false);
-            UpdateStaticInfo();
+            ConfigureRotationCombos();
             InitializeTray();
+            SetStatus(lblNormalStatusDot, lblNormalStatusText, false);
+            SetStatus(lblStripStatusDot, lblStripStatusText, false);
+
+            txtNormalAgentId.Text = Environment.MachineName + "-normal";
+            txtStripAgentId.Text = Environment.MachineName + "-strip";
 
             AddLog("Aplicativo iniciado.");
-            AddLog("Agent ID local: " + Environment.MachineName);
-            AddLog("Versão atual: " + GetCurrentVersion());
+            AddLog("Perfis: Normal e Tirinha.");
 
             LoadInstalledPrinters();
             LoadConfig();
@@ -53,48 +58,18 @@ namespace CBL.PrintAssistant
             FormClosing += MainForm_FormClosing;
         }
 
-        private void ConfigureRotationCombo()
+        private void ConfigureRotationCombos()
         {
-            cmbRotation.Items.Clear();
-            cmbRotation.Items.Add("Automático");
-            cmbRotation.Items.Add("0°");
-            cmbRotation.Items.Add("90°");
-            cmbRotation.Items.Add("180°");
-            cmbRotation.Items.Add("270°");
-            cmbRotation.SelectedIndex = 0;
-        }
+            string[] rotations = { "Automático", "0°", "90°", "180°", "270°" };
 
-        private void UpdateStaticInfo()
-        {
-            lblAgentIdValue.Text = Environment.MachineName;
-            lblSystemPrinterValue.Text = "-";
-            lblLastHeartbeatValue.Text = "-";
-            lblLastJobValue.Text = "-";
-        }
+            cmbNormalRotation.Items.Clear();
+            cmbStripRotation.Items.Clear();
 
-        private void UpdateStatusUi(bool active)
-        {
-            _isListening = active;
-            lblStatusDot.ForeColor = active ? Color.ForestGreen : Color.Firebrick;
-            lblStatusText.Text = active ? "Ativo" : "Inativo";
-            btnStartListener.Text = active ? "Parar Escuta" : "Iniciar Escuta";
+            cmbNormalRotation.Items.AddRange(rotations);
+            cmbStripRotation.Items.AddRange(rotations);
 
-            if (_trayIcon != null)
-            {
-                _trayIcon.Text = active
-                    ? "CBL Print Assistant - Ativo"
-                    : "CBL Print Assistant - Inativo";
-            }
-        }
-
-        private void UpdateHeartbeatUi()
-        {
-            lblLastHeartbeatValue.Text = DateTime.Now.ToString("HH:mm:ss");
-        }
-
-        private void UpdateLastJobUi(string value)
-        {
-            lblLastJobValue.Text = value;
+            cmbNormalRotation.SelectedIndex = 0;
+            cmbStripRotation.SelectedIndex = 0;
         }
 
         private void InitializeTray()
@@ -104,18 +79,22 @@ namespace CBL.PrintAssistant
             var openItem = new ToolStripMenuItem("Abrir");
             openItem.Click += (s, e) => ShowFromTray();
 
-            var toggleListenItem = new ToolStripMenuItem("Iniciar/Parar Escuta");
-            toggleListenItem.Click += async (s, e) => await ToggleListenerFromTrayAsync();
+            var startItem = new ToolStripMenuItem("Iniciar Escuta");
+            startItem.Click += async (s, e) => await StartAllAsync();
 
-            var checkUpdatesItem = new ToolStripMenuItem("Verificar Atualização");
-            checkUpdatesItem.Click += async (s, e) => await CheckForUpdatesAsync(true);
+            var stopItem = new ToolStripMenuItem("Parar Escuta");
+            stopItem.Click += (s, e) => StopAll();
+
+            var updateItem = new ToolStripMenuItem("Verificar Atualização");
+            updateItem.Click += async (s, e) => await CheckForUpdatesAsync(true);
 
             var exitItem = new ToolStripMenuItem("Sair");
             exitItem.Click += (s, e) => ExitApplication();
 
             _trayMenu.Items.Add(openItem);
-            _trayMenu.Items.Add(toggleListenItem);
-            _trayMenu.Items.Add(checkUpdatesItem);
+            _trayMenu.Items.Add(startItem);
+            _trayMenu.Items.Add(stopItem);
+            _trayMenu.Items.Add(updateItem);
             _trayMenu.Items.Add(new ToolStripSeparator());
             _trayMenu.Items.Add(exitItem);
 
@@ -123,7 +102,7 @@ namespace CBL.PrintAssistant
             {
                 Icon = SystemIcons.Application,
                 Visible = true,
-                Text = "CBL Print Assistant - Inativo",
+                Text = "CBL Print Assistant",
                 ContextMenuStrip = _trayMenu
             };
 
@@ -132,9 +111,7 @@ namespace CBL.PrintAssistant
 
         private async void MainForm_Shown(object? sender, EventArgs e)
         {
-            string[] args = Environment.GetCommandLineArgs();
-
-            foreach (string arg in args)
+            foreach (string arg in Environment.GetCommandLineArgs())
             {
                 if (string.Equals(arg, "--tray", StringComparison.OrdinalIgnoreCase))
                 {
@@ -149,9 +126,7 @@ namespace CBL.PrintAssistant
         private void MainForm_Resize(object? sender, EventArgs e)
         {
             if (WindowState == FormWindowState.Minimized)
-            {
                 HideToTray();
-            }
         }
 
         private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
@@ -167,11 +142,6 @@ namespace CBL.PrintAssistant
         {
             Hide();
             ShowInTaskbar = false;
-
-            if (_trayIcon != null)
-            {
-                _trayIcon.Visible = true;
-            }
         }
 
         private void ShowFromTray()
@@ -182,30 +152,19 @@ namespace CBL.PrintAssistant
             Activate();
         }
 
-        private async Task ToggleListenerFromTrayAsync()
-        {
-            if (_isListening)
-            {
-                StopListener();
-                return;
-            }
-
-            await StartListenerAsync();
-        }
-
         private void ExitApplication()
         {
             try
             {
                 _allowClose = true;
-                _trayIcon?.Dispose();
-                _trayIcon = null;
-                _trayMenu?.Dispose();
-                _trayMenu = null;
 
-                _listenerCts?.Cancel();
-                _listenerCts?.Dispose();
-                _listenerCts = null;
+                _normalCts?.Cancel();
+                _normalCts?.Dispose();
+                _stripCts?.Cancel();
+                _stripCts?.Dispose();
+
+                _trayIcon?.Dispose();
+                _trayMenu?.Dispose();
             }
             catch
             {
@@ -214,135 +173,31 @@ namespace CBL.PrintAssistant
             Application.Exit();
         }
 
+        private void SetStatus(Label dot, Label text, bool active)
+        {
+            dot.ForeColor = active ? Color.ForestGreen : Color.Firebrick;
+            text.Text = active ? "Ativo" : "Inativo";
+        }
+
         private void ApplyStartupSetting(bool enabled)
         {
             using RegistryKey? key = Registry.CurrentUser.OpenSubKey(
                 @"Software\Microsoft\Windows\CurrentVersion\Run",
-                writable: true
-            );
+                writable: true);
 
             if (key == null)
                 throw new Exception("Não foi possível acessar o registro do Windows.");
 
             if (enabled)
             {
-                string exePath = Application.ExecutablePath;
-                string value = $"\"{exePath}\" --tray";
+                string value = $"\"{Application.ExecutablePath}\" --tray";
                 key.SetValue(StartupRegistryName, value);
-                AddLog("Inicialização com Windows ativada.");
             }
             else
             {
                 if (key.GetValue(StartupRegistryName) != null)
                     key.DeleteValue(StartupRegistryName, false);
-
-                AddLog("Inicialização com Windows desativada.");
             }
-        }
-
-        private string GetCurrentVersion()
-        {
-            var infoVersion = Assembly.GetExecutingAssembly()
-                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-                .InformationalVersion;
-
-            if (!string.IsNullOrWhiteSpace(infoVersion))
-                return infoVersion;
-
-            return Application.ProductVersion;
-        }
-
-        private Version GetCurrentVersionParsed()
-        {
-            string versionText = GetCurrentVersion();
-
-            int plusIndex = versionText.IndexOf('+');
-            if (plusIndex >= 0)
-                versionText = versionText.Substring(0, plusIndex);
-
-            if (Version.TryParse(versionText, out var version))
-                return version;
-
-            return new Version(1, 0, 0);
-        }
-
-        private async Task CheckForUpdatesAsync(bool manual)
-        {
-            try
-            {
-                AddLog("Verificando atualizações...");
-
-                var result = await _updateService.CheckForUpdateAsync(
-                    GitHubOwner,
-                    GitHubRepo,
-                    GetCurrentVersionParsed()
-                );
-
-                if (!result.HasUpdate)
-                {
-                    AddLog("Nenhuma atualização encontrada.");
-
-                    if (manual)
-                    {
-                        MessageBox.Show(
-                            "Você já está na versão mais recente.",
-                            "Atualização",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Information
-                        );
-                    }
-
-                    return;
-                }
-
-                AddLog($"Nova versão encontrada: {result.LatestVersion}");
-
-                var dialogResult = MessageBox.Show(
-                    $"Nova versão disponível: {result.LatestVersion}\n\nDeseja baixar e atualizar agora?",
-                    "Atualização disponível",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Information
-                );
-
-                if (dialogResult != DialogResult.Yes)
-                    return;
-
-                AddLog("Baixando atualização...");
-
-                string scriptPath = await _updateService.DownloadAndPrepareUpdateAsync(
-                    result.DownloadUrl ?? "",
-                    Application.StartupPath,
-                    Path.GetFileName(Application.ExecutablePath),
-                    result.LatestVersion,
-                    Environment.ProcessId
-                );
-
-                AddLog("Atualização preparada. Reiniciando aplicativo...");
-
-                _updateService.LaunchUpdateScript(scriptPath);
-
-                _allowClose = true;
-                Application.Exit();
-            }
-            catch (Exception ex)
-            {
-                AddLog("Erro ao verificar atualização: " + ex.Message);
-
-                if (manual)
-                {
-                    MessageBox.Show(
-                        "Erro ao verificar atualização:\n" + ex.Message,
-                        "Erro",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error
-                    );
-                }
-            }
-        }
-
-        private void btnCheckUpdates_Click(object sender, EventArgs e)
-        {
-            _ = CheckForUpdatesAsync(true);
         }
 
         private void btnLoadPrinters_Click(object sender, EventArgs e)
@@ -354,16 +209,16 @@ namespace CBL.PrintAssistant
         {
             try
             {
-                cmbPrinters.Items.Clear();
+                cmbNormalPrinter.Items.Clear();
+                cmbStripPrinter.Items.Clear();
 
                 foreach (string printerName in PrinterSettings.InstalledPrinters)
                 {
-                    cmbPrinters.Items.Add(printerName);
+                    cmbNormalPrinter.Items.Add(printerName);
+                    cmbStripPrinter.Items.Add(printerName);
                 }
 
-                AddLog($"Impressoras carregadas: {cmbPrinters.Items.Count}");
-
-                if (cmbPrinters.Items.Count == 0)
+                if (cmbNormalPrinter.Items.Count == 0)
                 {
                     AddLog("Nenhuma impressora encontrada no Windows.");
                     return;
@@ -371,9 +226,9 @@ namespace CBL.PrintAssistant
 
                 int askIndex = -1;
 
-                for (int i = 0; i < cmbPrinters.Items.Count; i++)
+                for (int i = 0; i < cmbNormalPrinter.Items.Count; i++)
                 {
-                    var itemText = cmbPrinters.Items[i]?.ToString() ?? "";
+                    string itemText = cmbNormalPrinter.Items[i]?.ToString() ?? "";
 
                     if (itemText.Contains("ASK-300", StringComparison.OrdinalIgnoreCase) ||
                         itemText.Contains("FUJIFILM", StringComparison.OrdinalIgnoreCase))
@@ -385,26 +240,22 @@ namespace CBL.PrintAssistant
 
                 if (askIndex >= 0)
                 {
-                    cmbPrinters.SelectedIndex = askIndex;
-                    AddLog($"Impressora Fujifilm encontrada: {cmbPrinters.SelectedItem}");
+                    cmbNormalPrinter.SelectedIndex = askIndex;
+                    cmbStripPrinter.SelectedIndex = askIndex;
                 }
                 else
                 {
-                    cmbPrinters.SelectedIndex = 0;
-                    AddLog($"Impressora padrão carregada: {cmbPrinters.SelectedItem}");
+                    cmbNormalPrinter.SelectedIndex = 0;
+                    cmbStripPrinter.SelectedIndex = 0;
                 }
 
-                TryRestoreSavedPrinter();
+                TryRestoreSavedPrinters();
+
+                AddLog("Impressoras carregadas.");
             }
             catch (Exception ex)
             {
                 AddLog("Erro ao carregar impressoras: " + ex.Message);
-                MessageBox.Show(
-                    "Erro ao carregar impressoras:\n" + ex.Message,
-                    "Erro",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                );
             }
         }
 
@@ -413,16 +264,29 @@ namespace CBL.PrintAssistant
             return new AppConfig
             {
                 ApiBaseUrl = txtSupabaseUrl.Text.Trim(),
-                AgentId = Environment.MachineName,
-                AgentToken = txtSupabaseKey.Text.Trim(),
                 UnitId = txtUnitId.Text.Trim(),
                 KioskId = txtKioskId.Text.Trim(),
-                PrinterName = cmbPrinters.SelectedItem?.ToString() ?? "",
                 StartWithWindows = chkStartWithWindows.Checked,
-                RotationMode = cmbRotation.SelectedItem?.ToString() ?? "Automático",
-                Bleed = (int)nudBleed.Value,
-                OffsetX = (int)nudOffsetX.Value,
-                OffsetY = (int)nudOffsetY.Value
+                NormalProfile = new PrintProfileConfig
+                {
+                    AgentId = txtNormalAgentId.Text.Trim(),
+                    AgentToken = txtNormalToken.Text.Trim(),
+                    PrinterName = cmbNormalPrinter.SelectedItem?.ToString() ?? "",
+                    RotationMode = cmbNormalRotation.SelectedItem?.ToString() ?? "Automático",
+                    Bleed = (int)nudNormalBleed.Value,
+                    OffsetX = (int)nudNormalOffsetX.Value,
+                    OffsetY = (int)nudNormalOffsetY.Value
+                },
+                StripProfile = new PrintProfileConfig
+                {
+                    AgentId = txtStripAgentId.Text.Trim(),
+                    AgentToken = txtStripToken.Text.Trim(),
+                    PrinterName = cmbStripPrinter.SelectedItem?.ToString() ?? "",
+                    RotationMode = cmbStripRotation.SelectedItem?.ToString() ?? "Automático",
+                    Bleed = (int)nudStripBleed.Value,
+                    OffsetX = (int)nudStripOffsetX.Value,
+                    OffsetY = (int)nudStripOffsetY.Value
+                }
             };
         }
 
@@ -432,30 +296,20 @@ namespace CBL.PrintAssistant
             {
                 var config = GetConfigFromForm();
 
-                string json = JsonConvert.SerializeObject(config, Formatting.Indented);
-                File.WriteAllText(_configPath, json);
-
+                File.WriteAllText(_configPath, JsonConvert.SerializeObject(config, Formatting.Indented));
                 _currentConfig = config;
 
                 ApplyStartupSetting(config.StartWithWindows);
 
                 AddLog("Configuração salva com sucesso.");
-                MessageBox.Show(
-                    "Configuração salva com sucesso.",
-                    "Sucesso",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information
-                );
+                MessageBox.Show("Configuração salva com sucesso.", "Sucesso",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
                 AddLog("Erro ao salvar configuração: " + ex.Message);
-                MessageBox.Show(
-                    "Erro ao salvar configuração:\n" + ex.Message,
-                    "Erro",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                );
+                MessageBox.Show("Erro ao salvar configuração:\n" + ex.Message, "Erro",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -464,39 +318,48 @@ namespace CBL.PrintAssistant
             try
             {
                 if (!File.Exists(_configPath))
-                {
-                    AddLog("Nenhuma configuração salva encontrada.");
                     return;
-                }
 
                 string json = File.ReadAllText(_configPath);
                 var config = JsonConvert.DeserializeObject<AppConfig>(json);
 
                 if (config == null)
-                {
-                    AddLog("Arquivo de configuração vazio ou inválido.");
                     return;
-                }
 
                 _currentConfig = config;
 
                 txtSupabaseUrl.Text = config.ApiBaseUrl;
-                txtSupabaseKey.Text = config.AgentToken;
                 txtUnitId.Text = config.UnitId;
                 txtKioskId.Text = config.KioskId;
                 chkStartWithWindows.Checked = config.StartWithWindows;
 
-                if (!string.IsNullOrWhiteSpace(config.RotationMode) && cmbRotation.Items.Contains(config.RotationMode))
-                    cmbRotation.SelectedItem = config.RotationMode;
-                else
-                    cmbRotation.SelectedIndex = 0;
+                txtNormalAgentId.Text = string.IsNullOrWhiteSpace(config.NormalProfile.AgentId)
+                    ? Environment.MachineName + "-normal"
+                    : config.NormalProfile.AgentId;
+                txtNormalToken.Text = config.NormalProfile.AgentToken;
 
-                nudBleed.Value = Math.Max(nudBleed.Minimum, Math.Min(nudBleed.Maximum, config.Bleed));
-                nudOffsetX.Value = Math.Max(nudOffsetX.Minimum, Math.Min(nudOffsetX.Maximum, config.OffsetX));
-                nudOffsetY.Value = Math.Max(nudOffsetY.Minimum, Math.Min(nudOffsetY.Maximum, config.OffsetY));
+                txtStripAgentId.Text = string.IsNullOrWhiteSpace(config.StripProfile.AgentId)
+                    ? Environment.MachineName + "-strip"
+                    : config.StripProfile.AgentId;
+                txtStripToken.Text = config.StripProfile.AgentToken;
+
+                if (cmbNormalRotation.Items.Contains(config.NormalProfile.RotationMode))
+                    cmbNormalRotation.SelectedItem = config.NormalProfile.RotationMode;
+
+                if (cmbStripRotation.Items.Contains(config.StripProfile.RotationMode))
+                    cmbStripRotation.SelectedItem = config.StripProfile.RotationMode;
+
+                nudNormalBleed.Value = ClampNumeric(nudNormalBleed, config.NormalProfile.Bleed);
+                nudNormalOffsetX.Value = ClampNumeric(nudNormalOffsetX, config.NormalProfile.OffsetX);
+                nudNormalOffsetY.Value = ClampNumeric(nudNormalOffsetY, config.NormalProfile.OffsetY);
+
+                nudStripBleed.Value = ClampNumeric(nudStripBleed, config.StripProfile.Bleed);
+                nudStripOffsetX.Value = ClampNumeric(nudStripOffsetX, config.StripProfile.OffsetX);
+                nudStripOffsetY.Value = ClampNumeric(nudStripOffsetY, config.StripProfile.OffsetY);
+
+                TryRestoreSavedPrinters();
 
                 AddLog("Configuração carregada.");
-                TryRestoreSavedPrinter();
             }
             catch (Exception ex)
             {
@@ -504,224 +367,251 @@ namespace CBL.PrintAssistant
             }
         }
 
-        private void TryRestoreSavedPrinter()
+        private decimal ClampNumeric(NumericUpDown control, int value)
         {
-            try
-            {
-                if (_currentConfig == null)
-                    return;
-
-                if (string.IsNullOrWhiteSpace(_currentConfig.PrinterName))
-                    return;
-
-                for (int i = 0; i < cmbPrinters.Items.Count; i++)
-                {
-                    var itemText = cmbPrinters.Items[i]?.ToString() ?? "";
-
-                    if (string.Equals(itemText, _currentConfig.PrinterName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        cmbPrinters.SelectedIndex = i;
-                        AddLog($"Impressora restaurada da configuração: {itemText}");
-                        return;
-                    }
-                }
-
-                AddLog($"Impressora salva não encontrada neste computador: {_currentConfig.PrinterName}");
-            }
-            catch (Exception ex)
-            {
-                AddLog("Erro ao restaurar impressora salva: " + ex.Message);
-            }
+            if (value < control.Minimum) return control.Minimum;
+            if (value > control.Maximum) return control.Maximum;
+            return value;
         }
 
-        private string GetSelectedPrinterName()
+        private void TryRestoreSavedPrinters()
         {
-            return cmbPrinters.SelectedItem?.ToString() ?? "";
-        }
-
-        private void btnTestPrint_Click(object sender, EventArgs e)
-        {
-            try
-            {
-                string printerName = GetSelectedPrinterName();
-
-                if (string.IsNullOrWhiteSpace(printerName))
-                {
-                    MessageBox.Show(
-                        "Selecione uma impressora antes de testar.",
-                        "Aviso",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning
-                    );
-                    return;
-                }
-
-                PrintDocument printDocument = new PrintDocument();
-                printDocument.PrinterSettings.PrinterName = printerName;
-
-                if (!printDocument.PrinterSettings.IsValid)
-                {
-                    MessageBox.Show(
-                        "A impressora selecionada não é válida no Windows.",
-                        "Erro",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error
-                    );
-                    return;
-                }
-
-                printDocument.PrintPage += (s, ev) =>
-                {
-                    using Font titleFont = new Font("Arial", 18, FontStyle.Bold);
-                    using Font bodyFont = new Font("Arial", 11, FontStyle.Regular);
-
-                    float y = 40;
-
-                    ev.Graphics.DrawString("CBL Print Assistant", titleFont, Brushes.Black, 40, y);
-                    y += 50;
-
-                    ev.Graphics.DrawString("Teste de impressão executado com sucesso.", bodyFont, Brushes.Black, 40, y);
-                    y += 30;
-
-                    ev.Graphics.DrawString($"Impressora: {printerName}", bodyFont, Brushes.Black, 40, y);
-                    y += 30;
-
-                    ev.Graphics.DrawString($"Data/Hora: {DateTime.Now:dd/MM/yyyy HH:mm:ss}", bodyFont, Brushes.Black, 40, y);
-                    y += 30;
-
-                    ev.Graphics.DrawString($"Unit ID: {txtUnitId.Text}", bodyFont, Brushes.Black, 40, y);
-                    y += 30;
-
-                    ev.Graphics.DrawString($"Kiosk ID: {txtKioskId.Text}", bodyFont, Brushes.Black, 40, y);
-
-                    ev.HasMorePages = false;
-                };
-
-                printDocument.Print();
-
-                AddLog($"Teste de impressão enviado para: {printerName}");
-                MessageBox.Show(
-                    "Teste de impressão enviado com sucesso.",
-                    "Sucesso",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information
-                );
-            }
-            catch (Exception ex)
-            {
-                AddLog("Erro no teste de impressão: " + ex.Message);
-                MessageBox.Show(
-                    "Erro no teste de impressão:\n" + ex.Message,
-                    "Erro",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                );
-            }
-        }
-
-        private async void btnStartListener_Click(object sender, EventArgs e)
-        {
-            if (_isListening)
-            {
-                StopListener();
+            if (_currentConfig == null)
                 return;
-            }
 
-            await StartListenerAsync();
+            SelectPrinterIfExists(cmbNormalPrinter, _currentConfig.NormalProfile.PrinterName);
+            SelectPrinterIfExists(cmbStripPrinter, _currentConfig.StripProfile.PrinterName);
         }
 
-        private async Task StartListenerAsync()
+        private void SelectPrinterIfExists(ComboBox combo, string printerName)
         {
+            if (string.IsNullOrWhiteSpace(printerName))
+                return;
+
+            for (int i = 0; i < combo.Items.Count; i++)
+            {
+                if (string.Equals(combo.Items[i]?.ToString(), printerName, StringComparison.OrdinalIgnoreCase))
+                {
+                    combo.SelectedIndex = i;
+                    return;
+                }
+            }
+        }
+
+        private async void btnStartAll_Click(object sender, EventArgs e)
+        {
+            await StartAllAsync();
+        }
+
+        private void btnStopAll_Click(object sender, EventArgs e)
+        {
+            StopAll();
+        }
+
+        private async Task StartAllAsync()
+        {
+            var config = GetConfigFromForm();
+
+            ValidateGeneralConfig(config);
+            ValidateProfile("Normal", config.NormalProfile);
+            ValidateProfile("Tirinha", config.StripProfile);
+
+            await StartNormalAsync(config);
+            await StartStripAsync(config);
+        }
+
+        private void StopAll()
+        {
+            StopNormal();
+            StopStrip();
+        }
+
+        private async Task StartNormalAsync(AppConfig config)
+        {
+            if (_normalListening)
+                return;
+
             try
             {
-                var config = GetConfigFromForm();
-                ValidateConfig(config);
+                AddLog("[Normal] Registrando agente...");
 
-                AddLog("Registrando agente na API...");
+                var profile = config.NormalProfile;
 
                 var registerResponse = await _printAgentService.SendAsync(
                     config.ApiBaseUrl,
                     new PrintAgentRequest
                     {
                         Action = "register",
-                        AgentId = config.AgentId,
-                        AgentToken = config.AgentToken,
+                        AgentId = profile.AgentId,
+                        AgentToken = profile.AgentToken,
                         MachineName = Environment.MachineName,
                         UnitId = config.UnitId,
                         KioskId = config.KioskId,
-                        WindowsPrinterName = config.PrinterName,
+                        WindowsPrinterName = profile.PrinterName,
                         AppVersion = Application.ProductVersion
                     });
 
                 if (registerResponse == null || !registerResponse.Ok)
-                    throw new Exception(registerResponse?.Error ?? "A API não confirmou o registro do agente.");
+                    throw new Exception(registerResponse?.Error ?? "A API não confirmou o registro.");
 
                 if (registerResponse.Agent != null)
                 {
-                    lblSystemPrinterValue.Text = string.IsNullOrWhiteSpace(registerResponse.Agent.PrinterName)
+                    lblNormalSystemPrinterValue.Text =
+                        string.IsNullOrWhiteSpace(registerResponse.Agent.PrinterName)
                         ? "-"
                         : registerResponse.Agent.PrinterName;
-
-                    if (!string.IsNullOrWhiteSpace(registerResponse.Agent.AgentId))
-                        lblAgentIdValue.Text = registerResponse.Agent.AgentId;
                 }
 
-                _listenerCts = new CancellationTokenSource();
-                UpdateStatusUi(true);
+                _normalCts = new CancellationTokenSource();
+                _normalListening = true;
+                SetStatus(lblNormalStatusDot, lblNormalStatusText, true);
 
-                AddLog("Agente registrado com sucesso.");
-                AddLog("Escuta iniciada.");
+                AddLog("[Normal] Escuta iniciada.");
 
-                _ = ListenLoopAsync(_listenerCts.Token);
+                _ = ListenLoopAsync(
+                    "Normal",
+                    config,
+                    profile,
+                    _normalCts.Token,
+                    () =>
+                    {
+                        _normalListening = false;
+                        SetStatus(lblNormalStatusDot, lblNormalStatusText, false);
+                    });
             }
             catch (Exception ex)
             {
-                UpdateStatusUi(false);
-                AddLog("Erro ao iniciar escuta: " + ex.Message);
-                MessageBox.Show(
-                    "Erro ao iniciar escuta:\n" + ex.Message,
-                    "Erro",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                );
+                _normalListening = false;
+                SetStatus(lblNormalStatusDot, lblNormalStatusText, false);
+                AddLog("[Normal] Erro ao iniciar: " + ex.Message);
             }
         }
 
-        private void StopListener()
+        private async Task StartStripAsync(AppConfig config)
+        {
+            if (_stripListening)
+                return;
+
+            try
+            {
+                AddLog("[Tirinha] Registrando agente...");
+
+                var profile = config.StripProfile;
+
+                var registerResponse = await _printAgentService.SendAsync(
+                    config.ApiBaseUrl,
+                    new PrintAgentRequest
+                    {
+                        Action = "register",
+                        AgentId = profile.AgentId,
+                        AgentToken = profile.AgentToken,
+                        MachineName = Environment.MachineName,
+                        UnitId = config.UnitId,
+                        KioskId = config.KioskId,
+                        WindowsPrinterName = profile.PrinterName,
+                        AppVersion = Application.ProductVersion
+                    });
+
+                if (registerResponse == null || !registerResponse.Ok)
+                    throw new Exception(registerResponse?.Error ?? "A API não confirmou o registro.");
+
+                if (registerResponse.Agent != null)
+                {
+                    lblStripSystemPrinterValue.Text =
+                        string.IsNullOrWhiteSpace(registerResponse.Agent.PrinterName)
+                        ? "-"
+                        : registerResponse.Agent.PrinterName;
+                }
+
+                _stripCts = new CancellationTokenSource();
+                _stripListening = true;
+                SetStatus(lblStripStatusDot, lblStripStatusText, true);
+
+                AddLog("[Tirinha] Escuta iniciada.");
+
+                _ = ListenLoopAsync(
+                    "Tirinha",
+                    config,
+                    profile,
+                    _stripCts.Token,
+                    () =>
+                    {
+                        _stripListening = false;
+                        SetStatus(lblStripStatusDot, lblStripStatusText, false);
+                    });
+            }
+            catch (Exception ex)
+            {
+                _stripListening = false;
+                SetStatus(lblStripStatusDot, lblStripStatusText, false);
+                AddLog("[Tirinha] Erro ao iniciar: " + ex.Message);
+            }
+        }
+
+        private void StopNormal()
         {
             try
             {
-                _listenerCts?.Cancel();
-                _listenerCts?.Dispose();
-                _listenerCts = null;
+                _normalCts?.Cancel();
+                _normalCts?.Dispose();
+                _normalCts = null;
             }
             catch
             {
             }
 
-            UpdateStatusUi(false);
-            AddLog("Escuta parada.");
+            _normalListening = false;
+            SetStatus(lblNormalStatusDot, lblNormalStatusText, false);
+            AddLog("[Normal] Escuta parada.");
         }
 
-        private void ValidateConfig(AppConfig config)
+        private void StopStrip()
+        {
+            try
+            {
+                _stripCts?.Cancel();
+                _stripCts?.Dispose();
+                _stripCts = null;
+            }
+            catch
+            {
+            }
+
+            _stripListening = false;
+            SetStatus(lblStripStatusDot, lblStripStatusText, false);
+            AddLog("[Tirinha] Escuta parada.");
+        }
+
+        private void ValidateGeneralConfig(AppConfig config)
         {
             if (string.IsNullOrWhiteSpace(config.ApiBaseUrl))
                 throw new Exception("Informe a API Base URL.");
-
-            if (string.IsNullOrWhiteSpace(config.AgentToken))
-                throw new Exception("Informe o Agent Token.");
 
             if (string.IsNullOrWhiteSpace(config.UnitId))
                 throw new Exception("Informe o Unit ID.");
 
             if (string.IsNullOrWhiteSpace(config.KioskId))
                 throw new Exception("Informe o Kiosk ID.");
-
-            if (string.IsNullOrWhiteSpace(config.PrinterName))
-                throw new Exception("Selecione uma impressora.");
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
+        private void ValidateProfile(string profileName, PrintProfileConfig profile)
+        {
+            if (string.IsNullOrWhiteSpace(profile.AgentId))
+                throw new Exception($"Informe o Agent ID do perfil {profileName}.");
+
+            if (string.IsNullOrWhiteSpace(profile.AgentToken))
+                throw new Exception($"Informe o Agent Token do perfil {profileName}.");
+
+            if (string.IsNullOrWhiteSpace(profile.PrinterName))
+                throw new Exception($"Selecione a impressora Windows do perfil {profileName}.");
+        }
+
+        private async Task ListenLoopAsync(
+            string profileName,
+            AppConfig generalConfig,
+            PrintProfileConfig profile,
+            CancellationToken cancellationToken,
+            Action onStopped)
         {
             int heartbeatCounter = 0;
 
@@ -729,7 +619,6 @@ namespace CBL.PrintAssistant
             {
                 try
                 {
-                    var config = GetConfigFromForm();
                     heartbeatCounter++;
 
                     if (heartbeatCounter >= 6)
@@ -737,32 +626,30 @@ namespace CBL.PrintAssistant
                         heartbeatCounter = 0;
 
                         await _printAgentService.SendAsync(
-                            config.ApiBaseUrl,
+                            generalConfig.ApiBaseUrl,
                             new PrintAgentRequest
                             {
                                 Action = "heartbeat",
-                                AgentId = config.AgentId,
-                                AgentToken = config.AgentToken
+                                AgentId = profile.AgentId,
+                                AgentToken = profile.AgentToken
                             });
 
-                        UpdateHeartbeatUi();
-                        AddLog("Heartbeat enviado.");
+                        AddLog($"[{profileName}] Heartbeat enviado.");
                     }
 
                     var nextJobResponse = await _printAgentService.SendAsync(
-                        config.ApiBaseUrl,
+                        generalConfig.ApiBaseUrl,
                         new PrintAgentRequest
                         {
                             Action = "next-job",
-                            AgentId = config.AgentId,
-                            AgentToken = config.AgentToken
+                            AgentId = profile.AgentId,
+                            AgentToken = profile.AgentToken
                         });
 
                     if (nextJobResponse?.Job != null)
                     {
-                        UpdateLastJobUi(nextJobResponse.Job.PrintOrderId);
-                        AddLog("Job encontrado: " + nextJobResponse.Job.PrintOrderId);
-                        await ProcessJobAsync(config, nextJobResponse.Job, cancellationToken);
+                        AddLog($"[{profileName}] Job encontrado: {nextJobResponse.Job.PrintOrderId}");
+                        await ProcessJobAsync(profileName, generalConfig, profile, nextJobResponse.Job, cancellationToken);
                     }
                 }
                 catch (OperationCanceledException)
@@ -771,7 +658,7 @@ namespace CBL.PrintAssistant
                 }
                 catch (Exception ex)
                 {
-                    AddLog("Erro no loop de escuta: " + ex.Message);
+                    AddLog($"[{profileName}] Erro no loop: {ex.Message}");
                 }
 
                 try
@@ -784,70 +671,68 @@ namespace CBL.PrintAssistant
                 }
             }
 
-            UpdateStatusUi(false);
+            onStopped();
         }
 
-        private async Task ProcessJobAsync(AppConfig config, PrintJobDto job, CancellationToken cancellationToken)
+        private async Task ProcessJobAsync(
+            string profileName,
+            AppConfig generalConfig,
+            PrintProfileConfig profile,
+            PrintJobDto job,
+            CancellationToken cancellationToken)
         {
             try
             {
                 var claimResponse = await _printAgentService.SendAsync(
-                    config.ApiBaseUrl,
+                    generalConfig.ApiBaseUrl,
                     new PrintAgentRequest
                     {
                         Action = "claim-job",
-                        AgentId = config.AgentId,
-                        AgentToken = config.AgentToken,
+                        AgentId = profile.AgentId,
+                        AgentToken = profile.AgentToken,
                         PrintOrderId = job.PrintOrderId
                     });
 
                 if (claimResponse == null || (claimResponse.Claimed != true && claimResponse.Status != "printing"))
                 {
-                    AddLog("Job não pôde ser assumido: " + job.PrintOrderId);
+                    AddLog($"[{profileName}] Job não pôde ser assumido: {job.PrintOrderId}");
                     return;
                 }
-
-                AddLog("Job assumido: " + job.PrintOrderId);
 
                 if (string.IsNullOrWhiteSpace(job.ImageUrl))
                     throw new Exception("O job não trouxe image_url.");
 
-                string printerName = GetSelectedPrinterName();
-                if (string.IsNullOrWhiteSpace(printerName))
-                    printerName = config.PrinterName;
-
                 for (int i = 0; i < Math.Max(1, job.Copies); i++)
                 {
-                    await PrintImageFromUrlInternalAsync(job.ImageUrl, printerName, cancellationToken);
+                    await PrintImageFromUrlInternalAsync(job.ImageUrl, profile, cancellationToken);
                 }
 
                 await _printAgentService.SendAsync(
-                    config.ApiBaseUrl,
+                    generalConfig.ApiBaseUrl,
                     new PrintAgentRequest
                     {
                         Action = "complete-job",
-                        AgentId = config.AgentId,
-                        AgentToken = config.AgentToken,
+                        AgentId = profile.AgentId,
+                        AgentToken = profile.AgentToken,
                         PrintOrderId = job.PrintOrderId,
                         CopiesPrinted = Math.Max(1, job.Copies)
                     });
 
-                UpdateLastJobUi(job.PrintOrderId);
-                AddLog("Job concluído: " + job.PrintOrderId);
+                AddLog($"[{profileName}] Job concluído: {job.PrintOrderId}");
             }
             catch (Exception ex)
             {
-                AddLog("Falha no job " + job.PrintOrderId + ": " + ex.Message);
+                AddLog($"[{profileName}] Falha no job {job.PrintOrderId}: {ex.Message}");
 
                 try
                 {
                     await _printAgentService.SendAsync(
-                        config.ApiBaseUrl,
+                        generalConfig.ApiBaseUrl,
                         new PrintAgentRequest
                         {
                             Action = "fail-job",
-                            AgentId = config.AgentId,
-                            AgentToken = config.AgentToken,
+                            AgentId = profile.AgentId,
+                            AgentToken = profile.AgentToken,
                             PrintOrderId = job.PrintOrderId,
                             ErrorMessage = ex.Message,
                             Retryable = true
@@ -855,15 +740,16 @@ namespace CBL.PrintAssistant
                 }
                 catch (Exception failEx)
                 {
-                    AddLog("Erro ao informar falha do job: " + failEx.Message);
+                    AddLog($"[{profileName}] Erro ao informar falha: {failEx.Message}");
                 }
             }
         }
 
-        private async Task PrintImageFromUrlInternalAsync(string imageUrl, string printerName, CancellationToken cancellationToken)
+        private async Task PrintImageFromUrlInternalAsync(
+            string imageUrl,
+            PrintProfileConfig profile,
+            CancellationToken cancellationToken)
         {
-            AddLog("Baixando imagem do job...");
-
             string tempFilePath;
 
             using (HttpClient client = new HttpClient())
@@ -871,25 +757,17 @@ namespace CBL.PrintAssistant
                 byte[] imageBytes = await client.GetByteArrayAsync(imageUrl, cancellationToken);
 
                 string extension = ".jpg";
+                if (imageUrl.Contains(".png", StringComparison.OrdinalIgnoreCase)) extension = ".png";
+                else if (imageUrl.Contains(".bmp", StringComparison.OrdinalIgnoreCase)) extension = ".bmp";
+                else if (imageUrl.Contains(".jpeg", StringComparison.OrdinalIgnoreCase)) extension = ".jpeg";
 
-                if (imageUrl.Contains(".png", StringComparison.OrdinalIgnoreCase))
-                    extension = ".png";
-                else if (imageUrl.Contains(".bmp", StringComparison.OrdinalIgnoreCase))
-                    extension = ".bmp";
-                else if (imageUrl.Contains(".jpeg", StringComparison.OrdinalIgnoreCase))
-                    extension = ".jpeg";
-
-                tempFilePath = Path.Combine(
-                    Path.GetTempPath(),
-                    $"cbl_print_{Guid.NewGuid()}{extension}"
-                );
-
+                tempFilePath = Path.Combine(Path.GetTempPath(), $"cbl_print_{Guid.NewGuid()}{extension}");
                 await File.WriteAllBytesAsync(tempFilePath, imageBytes, cancellationToken);
             }
 
             try
             {
-                PrintImageFromFile(tempFilePath, printerName);
+                PrintImageFromFile(tempFilePath, profile);
             }
             finally
             {
@@ -904,16 +782,16 @@ namespace CBL.PrintAssistant
             }
         }
 
-        private void PrintImageFromFile(string imagePath, string printerName)
+        private void PrintImageFromFile(string imagePath, PrintProfileConfig profile)
         {
             using Image originalImage = Image.FromFile(imagePath);
             using Bitmap preparedImage = new Bitmap(originalImage);
 
-            ApplyRotation(preparedImage, cmbRotation.SelectedItem?.ToString() ?? "Automático");
+            ApplyRotation(preparedImage, profile.RotationMode);
             preparedImage.SetResolution(300, 300);
 
             PrintDocument printDocument = new PrintDocument();
-            printDocument.PrinterSettings.PrinterName = printerName;
+            printDocument.PrinterSettings.PrinterName = profile.PrinterName;
 
             if (!printDocument.PrinterSettings.IsValid)
                 throw new Exception("A impressora selecionada não é válida no Windows.");
@@ -934,9 +812,7 @@ namespace CBL.PrintAssistant
             }
 
             if (selectedPaper == null)
-            {
                 selectedPaper = new PaperSize("4x6", 400, 600);
-            }
 
             bool landscape = preparedImage.Width >= preparedImage.Height;
 
@@ -945,9 +821,9 @@ namespace CBL.PrintAssistant
             printDocument.DefaultPageSettings.Margins = new Margins(0, 0, 0, 0);
             printDocument.OriginAtMargins = false;
 
-            int bleed = (int)nudBleed.Value;
-            int offsetX = (int)nudOffsetX.Value;
-            int offsetY = (int)nudOffsetY.Value;
+            int bleed = profile.Bleed;
+            int offsetX = profile.OffsetX;
+            int offsetY = profile.OffsetY;
 
             printDocument.PrintPage += (s, ev) =>
             {
@@ -986,12 +862,71 @@ namespace CBL.PrintAssistant
                 case "270°":
                     bitmap.RotateFlip(RotateFlipType.Rotate270FlipNone);
                     break;
-                case "Automático":
-                    break;
-                case "0°":
                 default:
                     break;
             }
+        }
+
+        private async Task CheckForUpdatesAsync(bool manual)
+        {
+            try
+            {
+                AddLog("Verificando atualizações...");
+
+                var currentVersion = new Version(Application.ProductVersion.Split('+')[0]);
+                var result = await _updateService.CheckForUpdateAsync(GitHubOwner, GitHubRepo, currentVersion);
+
+                if (!result.HasUpdate)
+                {
+                    AddLog("Nenhuma atualização encontrada.");
+
+                    if (manual)
+                    {
+                        MessageBox.Show("Você já está na versão mais recente.", "Atualização",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+
+                    return;
+                }
+
+                AddLog($"Nova versão encontrada: {result.LatestVersion}");
+
+                var ask = MessageBox.Show(
+                    $"Nova versão disponível: {result.LatestVersion}\n\nDeseja baixar e atualizar agora?",
+                    "Atualização disponível",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information);
+
+                if (ask != DialogResult.Yes)
+                    return;
+
+                string scriptPath = await _updateService.DownloadAndPrepareUpdateAsync(
+                    result.DownloadUrl ?? "",
+                    Application.StartupPath,
+                    Path.GetFileName(Application.ExecutablePath),
+                    result.LatestVersion,
+                    Environment.ProcessId);
+
+                _updateService.LaunchUpdateScript(scriptPath);
+
+                _allowClose = true;
+                Application.Exit();
+            }
+            catch (Exception ex)
+            {
+                AddLog("Erro ao verificar atualização: " + ex.Message);
+
+                if (manual)
+                {
+                    MessageBox.Show("Erro ao verificar atualização:\n" + ex.Message, "Erro",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void btnCheckUpdates_Click(object sender, EventArgs e)
+        {
+            _ = CheckForUpdatesAsync(true);
         }
 
         private void AddLog(string message)
@@ -1007,10 +942,5 @@ namespace CBL.PrintAssistant
                 listBox1.Items.Insert(0, line);
             }
         }
-
-        private void label3_Click(object sender, EventArgs e) { }
-        private void textBox3_TextChanged(object sender, EventArgs e) { }
-        private void lblSupabaseUrl_Click(object sender, EventArgs e) { }
-        private void txtSupabaseUrl_TextChanged(object sender, EventArgs e) { }
     }
 }
