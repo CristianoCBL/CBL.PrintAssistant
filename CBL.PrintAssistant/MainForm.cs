@@ -313,7 +313,8 @@ namespace CBL.PrintAssistant
                     result.DownloadUrl ?? "",
                     Application.StartupPath,
                     Path.GetFileName(Application.ExecutablePath),
-                    result.LatestVersion
+                    result.LatestVersion,
+                    Environment.ProcessId
                 );
 
                 AddLog("Atualização preparada. Reiniciando aplicativo...");

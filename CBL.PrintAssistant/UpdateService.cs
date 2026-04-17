@@ -61,7 +61,8 @@ namespace CBL.PrintAssistant
             string downloadUrl,
             string appDirectory,
             string exeName,
-            Version targetVersion)
+            Version targetVersion,
+            int currentProcessId)
         {
             if (string.IsNullOrWhiteSpace(downloadUrl))
                 throw new Exception("A release não possui asset ZIP para download.");
@@ -94,24 +95,32 @@ namespace CBL.PrintAssistant
             ZipFile.ExtractToDirectory(zipPath, extractPath, true);
 
             string contentRoot = ResolveExtractedContentRoot(extractPath, exeName);
-
             string updateCmdPath = Path.Combine(versionFolder, "apply-update.cmd");
 
             string script = $@"@echo off
 setlocal
-timeout /t 2 /nobreak >nul
 
+set ""PID={currentProcessId}""
 set ""SOURCE={contentRoot}""
 set ""TARGET={appDirectory}""
 set ""EXE={exeName}""
 
-robocopy ""%SOURCE%"" ""%TARGET%"" /E /R:2 /W:1 /XF appconfig.json
+:waitloop
+tasklist /FI ""PID eq %PID%"" | findstr /I ""%PID%"" >nul
+if %ERRORLEVEL%==0 (
+    timeout /t 1 /nobreak >nul
+    goto waitloop
+)
+
+timeout /t 1 /nobreak >nul
+
+robocopy ""%SOURCE%"" ""%TARGET%"" /E /R:10 /W:1 /XF appconfig.json >nul
+
 start """" ""%TARGET%\%EXE%""
 exit
 ";
 
             File.WriteAllText(updateCmdPath, script);
-
             return updateCmdPath;
         }
 
@@ -135,8 +144,7 @@ exit
             if (File.Exists(exeAtRoot))
                 return extractPath;
 
-            var directories = Directory.GetDirectories(extractPath);
-            foreach (var dir in directories)
+            foreach (var dir in Directory.GetDirectories(extractPath))
             {
                 string nestedExe = Path.Combine(dir, exeName);
                 if (File.Exists(nestedExe))
@@ -152,7 +160,6 @@ exit
                 return "0.0.0";
 
             string value = tag.Trim();
-
             if (value.StartsWith("v", StringComparison.OrdinalIgnoreCase))
                 value = value.Substring(1);
 
