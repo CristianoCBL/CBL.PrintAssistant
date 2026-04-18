@@ -36,6 +36,7 @@ namespace CBL.PrintAssistant
         private const string GitHubRepo = "CBL.PrintAssistant";
         private const string ProfileNormal = "Normal";
         private const string ProfileStrip = "Tirinha";
+        private const string ModeBoth = "Ambos";
 
         public MainForm()
         {
@@ -44,7 +45,7 @@ namespace CBL.PrintAssistant
             _configPath = Path.Combine(Application.StartupPath, "appconfig.json");
 
             ConfigureRotationCombos();
-            ConfigureProfileSelector();
+            ConfigureRunModeSelector();
             InitializeTray();
             SetStatus(lblNormalStatusDot, lblNormalStatusText, false);
             SetStatus(lblStripStatusDot, lblStripStatusText, false);
@@ -53,11 +54,11 @@ namespace CBL.PrintAssistant
             txtStripAgentId.Text = Environment.MachineName + "-strip";
 
             AddLog("Aplicativo iniciado.");
-            AddLog("Modo de uso: Normal ou Tirinha (um perfil por vez).");
+            AddLog("Modos de uso: Só Normal, Só Tirinha ou Ambos.");
 
             LoadInstalledPrinters();
             LoadConfig();
-            UpdateActiveProfileUi();
+            UpdateRunModeUi();
 
             Shown += MainForm_Shown;
             Resize += MainForm_Resize;
@@ -78,33 +79,46 @@ namespace CBL.PrintAssistant
             cmbStripRotation.SelectedIndex = 0;
         }
 
-        private void ConfigureProfileSelector()
+        private void ConfigureRunModeSelector()
         {
-            cmbActiveProfile.Items.Clear();
-            cmbActiveProfile.Items.Add(ProfileNormal);
-            cmbActiveProfile.Items.Add(ProfileStrip);
-            cmbActiveProfile.SelectedIndex = 0;
+            cmbRunMode.Items.Clear();
+            cmbRunMode.Items.Add(ProfileNormal);
+            cmbRunMode.Items.Add(ProfileStrip);
+            cmbRunMode.Items.Add(ModeBoth);
+            cmbRunMode.SelectedIndex = 0;
         }
 
-        private string GetSelectedProfileMode()
+        private string GetSelectedRunMode()
         {
-            return string.Equals(cmbActiveProfile.SelectedItem?.ToString(), ProfileStrip, StringComparison.OrdinalIgnoreCase)
-                ? ProfileStrip
-                : ProfileNormal;
+            string? value = cmbRunMode.SelectedItem?.ToString();
+            if (string.Equals(value, ProfileStrip, StringComparison.OrdinalIgnoreCase))
+                return ProfileStrip;
+            if (string.Equals(value, ModeBoth, StringComparison.OrdinalIgnoreCase))
+                return ModeBoth;
+            return ProfileNormal;
         }
 
-        private void cmbActiveProfile_SelectedIndexChanged(object sender, EventArgs e)
+        private void cmbRunMode_SelectedIndexChanged(object sender, EventArgs e)
         {
-            UpdateActiveProfileUi();
+            UpdateRunModeUi();
         }
 
-        private void UpdateActiveProfileUi()
+        private void UpdateRunModeUi()
         {
-            bool normalSelected = GetSelectedProfileMode() == ProfileNormal;
+            string mode = GetSelectedRunMode();
 
-            groupNormal.Enabled = normalSelected;
-            groupStrip.Enabled = !normalSelected;
-            btnStartAll.Text = normalSelected ? "Iniciar Normal" : "Iniciar Tirinha";
+            bool normalEnabled = mode == ProfileNormal || mode == ModeBoth;
+            bool stripEnabled = mode == ProfileStrip || mode == ModeBoth;
+
+            groupNormal.Enabled = normalEnabled;
+            groupStrip.Enabled = stripEnabled;
+
+            btnStartAll.Text = mode switch
+            {
+                ProfileStrip => "Iniciar Tirinha",
+                ModeBoth => "Iniciar Ambos",
+                _ => "Iniciar Normal"
+            };
         }
 
         private void InitializeTray()
@@ -114,11 +128,11 @@ namespace CBL.PrintAssistant
             var openItem = new ToolStripMenuItem("Abrir");
             openItem.Click += (s, e) => ShowFromTray();
 
-            var startItem = new ToolStripMenuItem("Iniciar Perfil Selecionado");
-            startItem.Click += async (s, e) => await StartSelectedProfileAsync();
+            var startItem = new ToolStripMenuItem("Iniciar modo selecionado");
+            startItem.Click += async (s, e) => await StartSelectedModeAsync();
 
             var syncItem = new ToolStripMenuItem("Sincronizar do Site");
-            syncItem.Click += async (s, e) => await SyncActiveProfileFromSiteAsync();
+            syncItem.Click += async (s, e) => await SyncFromSiteForCurrentModeAsync();
 
             var stopItem = new ToolStripMenuItem("Parar Escuta");
             stopItem.Click += (s, e) => StopAll();
@@ -378,7 +392,7 @@ namespace CBL.PrintAssistant
                 UnitId = txtUnitId.Text.Trim(),
                 KioskId = txtKioskId.Text.Trim(),
                 StartWithWindows = chkStartWithWindows.Checked,
-                ActiveProfile = GetSelectedProfileMode(),
+                RunMode = GetSelectedRunMode(),
                 NormalProfile = new PrintProfileConfig
                 {
                     AgentId = txtNormalAgentId.Text.Trim(),
@@ -477,15 +491,15 @@ namespace CBL.PrintAssistant
                 nudStripOffsetX.Value = ClampNumeric(nudStripOffsetX, config.StripProfile.OffsetX);
                 nudStripOffsetY.Value = ClampNumeric(nudStripOffsetY, config.StripProfile.OffsetY);
 
-                if (cmbActiveProfile.Items.Contains(config.ActiveProfile))
-                    cmbActiveProfile.SelectedItem = config.ActiveProfile;
+                if (cmbRunMode.Items.Contains(config.RunMode))
+                    cmbRunMode.SelectedItem = config.RunMode;
                 else
-                    cmbActiveProfile.SelectedItem = ProfileNormal;
+                    cmbRunMode.SelectedItem = ProfileNormal;
 
                 TryRestoreSavedPrinters();
                 RefreshPaperLists();
                 TryRestoreSavedPaperNames();
-                UpdateActiveProfileUi();
+                UpdateRunModeUi();
 
                 AddLog("Configuração carregada.");
             }
@@ -549,7 +563,7 @@ namespace CBL.PrintAssistant
 
         private async void btnStartAll_Click(object sender, EventArgs e)
         {
-            await StartSelectedProfileAsync();
+            await StartSelectedModeAsync();
         }
 
         private void btnStopAll_Click(object sender, EventArgs e)
@@ -559,57 +573,32 @@ namespace CBL.PrintAssistant
 
         private async void btnSyncFromSite_Click(object sender, EventArgs e)
         {
-            await SyncActiveProfileFromSiteAsync();
+            await SyncFromSiteForCurrentModeAsync();
         }
 
-        private async Task SyncActiveProfileFromSiteAsync()
+        private async Task SyncFromSiteForCurrentModeAsync()
         {
             try
             {
-                var config = GetConfigFromForm();
-                ValidateGeneralConfig(config);
+                string mode = GetSelectedRunMode();
 
-                bool normalSelected = GetSelectedProfileMode() == ProfileNormal;
-                var profile = normalSelected ? config.NormalProfile : config.StripProfile;
-                string profileType = normalSelected ? "normal" : "strip";
-                string profileLabel = normalSelected ? ProfileNormal : ProfileStrip;
-
-                if (string.IsNullOrWhiteSpace(profile.AgentId))
-                    throw new Exception($"Informe o Agent ID do perfil {profileLabel}.");
-
-                if (string.IsNullOrWhiteSpace(profile.AgentToken))
-                    throw new Exception($"Informe o Agent Token do perfil {profileLabel}.");
-
-                AddLog($"[{profileLabel}] Sincronizando configuração do site...");
-
-                using var client = new HttpClient();
-
-                var payload = new
+                if (mode == ModeBoth)
                 {
-                    action = "get-config",
-                    agent_id = profile.AgentId,
-                    agent_token = profile.AgentToken,
-                    profile_type = profileType
-                };
+                    await SyncProfileFromSiteAsync(true);
+                    await SyncProfileFromSiteAsync(false);
+                    MessageBox.Show(
+                        "Configuração dos perfis Normal e Tirinha sincronizada com sucesso.",
+                        "Sincronização concluída",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                    return;
+                }
 
-                string json = JsonConvert.SerializeObject(payload);
-                using var content = new StringContent(json, Encoding.UTF8, "application/json");
-                using var response = await client.PostAsync(config.ApiBaseUrl, content);
-                string body = await response.Content.ReadAsStringAsync();
+                bool normalProfile = mode == ProfileNormal;
+                await SyncProfileFromSiteAsync(normalProfile);
 
-                if (!response.IsSuccessStatusCode)
-                    throw new Exception($"HTTP {(int)response.StatusCode}: {body}");
-
-                var apiResponse = JsonConvert.DeserializeObject<RemoteConfigResponse>(body);
-                if (apiResponse == null || !apiResponse.Ok || apiResponse.Config == null)
-                    throw new Exception(apiResponse?.Error ?? "A API não retornou uma configuração válida.");
-
-                ApplyRemoteConfigToUi(normalSelected, apiResponse.Config);
-                SaveCurrentConfigToDisk();
-
-                AddLog($"[{profileLabel}] Configuração sincronizada com sucesso.");
                 MessageBox.Show(
-                    $"Configuração do perfil {profileLabel} sincronizada com sucesso.",
+                    $"Configuração do perfil {(normalProfile ? ProfileNormal : ProfileStrip)} sincronizada com sucesso.",
                     "Sincronização concluída",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
@@ -623,6 +612,51 @@ namespace CBL.PrintAssistant
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             }
+        }
+
+        private async Task SyncProfileFromSiteAsync(bool normalProfile)
+        {
+            var config = GetConfigFromForm();
+            ValidateGeneralConfig(config);
+
+            var profile = normalProfile ? config.NormalProfile : config.StripProfile;
+            string profileType = normalProfile ? "normal" : "strip";
+            string profileLabel = normalProfile ? ProfileNormal : ProfileStrip;
+
+            if (string.IsNullOrWhiteSpace(profile.AgentId))
+                throw new Exception($"Informe o Agent ID do perfil {profileLabel}.");
+
+            if (string.IsNullOrWhiteSpace(profile.AgentToken))
+                throw new Exception($"Informe o Agent Token do perfil {profileLabel}.");
+
+            AddLog($"[{profileLabel}] Sincronizando configuração do site...");
+
+            using var client = new HttpClient();
+
+            var payload = new
+            {
+                action = "get-config",
+                agent_id = profile.AgentId,
+                agent_token = profile.AgentToken,
+                profile_type = profileType
+            };
+
+            string json = JsonConvert.SerializeObject(payload);
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
+            using var response = await client.PostAsync(config.ApiBaseUrl, content);
+            string body = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+                throw new Exception($"HTTP {(int)response.StatusCode}: {body}");
+
+            var apiResponse = JsonConvert.DeserializeObject<RemoteConfigResponse>(body);
+            if (apiResponse == null || !apiResponse.Ok || apiResponse.Config == null)
+                throw new Exception(apiResponse?.Error ?? "A API não retornou uma configuração válida.");
+
+            ApplyRemoteConfigToUi(normalProfile, apiResponse.Config);
+            SaveCurrentConfigToDisk();
+
+            AddLog($"[{profileLabel}] Configuração sincronizada com sucesso.");
         }
 
         private void ApplyRemoteConfigToUi(bool normalProfile, RemoteProfileConfig config)
@@ -697,13 +731,15 @@ namespace CBL.PrintAssistant
             public int? OffsetY { get; set; }
         }
 
-        private async Task StartSelectedProfileAsync()
+        private async Task StartSelectedModeAsync()
         {
             var config = GetConfigFromForm();
 
             ValidateGeneralConfig(config);
 
-            if (GetSelectedProfileMode() == ProfileNormal)
+            string mode = GetSelectedRunMode();
+
+            if (mode == ProfileNormal)
             {
                 ValidateProfile(ProfileNormal, config.NormalProfile);
                 StopStrip();
@@ -711,8 +747,18 @@ namespace CBL.PrintAssistant
                 return;
             }
 
+            if (mode == ProfileStrip)
+            {
+                ValidateProfile(ProfileStrip, config.StripProfile);
+                StopNormal();
+                await StartStripAsync(config);
+                return;
+            }
+
+            ValidateProfile(ProfileNormal, config.NormalProfile);
             ValidateProfile(ProfileStrip, config.StripProfile);
-            StopNormal();
+
+            await StartNormalAsync(config);
             await StartStripAsync(config);
         }
 

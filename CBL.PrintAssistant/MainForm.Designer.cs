@@ -31,8 +31,8 @@ namespace CBL.PrintAssistant
             btnStopAll = new Button();
             btnCheckUpdates = new Button();
             btnSyncFromSite = new Button();
-            lblActiveProfile = new Label();
-            cmbActiveProfile = new ComboBox();
+            lblRunMode = new Label();
+            cmbRunMode = new ComboBox();
             groupNormal = new GroupBox();
             lblNormalSystemPrinterValue = new Label();
             label17 = new Label();
@@ -206,24 +206,24 @@ namespace CBL.PrintAssistant
             btnSyncFromSite.Text = "Sincronizar do Site";
             btnSyncFromSite.Click += btnSyncFromSite_Click;
             // 
-            // lblActiveProfile
+            // lblRunMode
             // 
-            lblActiveProfile.AutoSize = true;
-            lblActiveProfile.Location = new Point(482, 71);
-            lblActiveProfile.Name = "lblActiveProfile";
-            lblActiveProfile.Size = new Size(76, 15);
-            lblActiveProfile.TabIndex = 5;
-            lblActiveProfile.Text = "Perfil em uso";
+            lblRunMode.AutoSize = true;
+            lblRunMode.Location = new Point(482, 71);
+            lblRunMode.Name = "lblRunMode";
+            lblRunMode.Size = new Size(99, 15);
+            lblRunMode.TabIndex = 5;
+            lblRunMode.Text = "Modo de execução";
             // 
-            // cmbActiveProfile
+            // cmbRunMode
             // 
-            cmbActiveProfile.DropDownStyle = ComboBoxStyle.DropDownList;
-            cmbActiveProfile.FormattingEnabled = true;
-            cmbActiveProfile.Location = new Point(482, 89);
-            cmbActiveProfile.Name = "cmbActiveProfile";
-            cmbActiveProfile.Size = new Size(354, 23);
-            cmbActiveProfile.TabIndex = 4;
-            cmbActiveProfile.SelectedIndexChanged += cmbActiveProfile_SelectedIndexChanged;
+            cmbRunMode.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbRunMode.FormattingEnabled = true;
+            cmbRunMode.Location = new Point(482, 89);
+            cmbRunMode.Name = "cmbRunMode";
+            cmbRunMode.Size = new Size(354, 23);
+            cmbRunMode.TabIndex = 4;
+            cmbRunMode.SelectedIndexChanged += cmbRunMode_SelectedIndexChanged;
             // 
             // groupNormal
             // 
@@ -736,8 +736,8 @@ namespace CBL.PrintAssistant
             Controls.Add(label6);
             Controls.Add(groupStrip);
             Controls.Add(groupNormal);
-            Controls.Add(cmbActiveProfile);
-            Controls.Add(lblActiveProfile);
+            Controls.Add(cmbRunMode);
+            Controls.Add(lblRunMode);
             Controls.Add(btnSyncFromSite);
             Controls.Add(btnCheckUpdates);
             Controls.Add(btnStopAll);
@@ -787,8 +787,8 @@ namespace CBL.PrintAssistant
         private Button btnStopAll;
         private Button btnCheckUpdates;
         private Button btnSyncFromSite;
-        private Label lblActiveProfile;
-        private ComboBox cmbActiveProfile;
+        private Label lblRunMode;
+        private ComboBox cmbRunMode;
         private GroupBox groupNormal;
         private GroupBox groupStrip;
         private Label label6;
