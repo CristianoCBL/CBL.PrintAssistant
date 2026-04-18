@@ -3,11 +3,13 @@ using System.Drawing;
 using System.Drawing.Printing;
 using System.IO;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace CBL.PrintAssistant
 {
@@ -115,6 +117,9 @@ namespace CBL.PrintAssistant
             var startItem = new ToolStripMenuItem("Iniciar Perfil Selecionado");
             startItem.Click += async (s, e) => await StartSelectedProfileAsync();
 
+            var syncItem = new ToolStripMenuItem("Sincronizar do Site");
+            syncItem.Click += async (s, e) => await SyncActiveProfileFromSiteAsync();
+
             var stopItem = new ToolStripMenuItem("Parar Escuta");
             stopItem.Click += (s, e) => StopAll();
 
@@ -126,6 +131,7 @@ namespace CBL.PrintAssistant
 
             _trayMenu.Items.Add(openItem);
             _trayMenu.Items.Add(startItem);
+            _trayMenu.Items.Add(syncItem);
             _trayMenu.Items.Add(stopItem);
             _trayMenu.Items.Add(updateItem);
             _trayMenu.Items.Add(new ToolStripSeparator());
@@ -404,13 +410,7 @@ namespace CBL.PrintAssistant
         {
             try
             {
-                var config = GetConfigFromForm();
-
-                File.WriteAllText(_configPath, JsonConvert.SerializeObject(config, Formatting.Indented));
-                _currentConfig = config;
-
-                ApplyStartupSetting(config.StartWithWindows);
-
+                SaveCurrentConfigToDisk();
                 AddLog("Configuração salva com sucesso.");
                 MessageBox.Show("Configuração salva com sucesso.", "Sucesso",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -421,6 +421,14 @@ namespace CBL.PrintAssistant
                 MessageBox.Show("Erro ao salvar configuração:\n" + ex.Message, "Erro",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private void SaveCurrentConfigToDisk()
+        {
+            var config = GetConfigFromForm();
+            File.WriteAllText(_configPath, JsonConvert.SerializeObject(config, Formatting.Indented));
+            _currentConfig = config;
+            ApplyStartupSetting(config.StartWithWindows);
         }
 
         private void LoadConfig()
@@ -547,6 +555,146 @@ namespace CBL.PrintAssistant
         private void btnStopAll_Click(object sender, EventArgs e)
         {
             StopAll();
+        }
+
+        private async void btnSyncFromSite_Click(object sender, EventArgs e)
+        {
+            await SyncActiveProfileFromSiteAsync();
+        }
+
+        private async Task SyncActiveProfileFromSiteAsync()
+        {
+            try
+            {
+                var config = GetConfigFromForm();
+                ValidateGeneralConfig(config);
+
+                bool normalSelected = GetSelectedProfileMode() == ProfileNormal;
+                var profile = normalSelected ? config.NormalProfile : config.StripProfile;
+                string profileType = normalSelected ? "normal" : "strip";
+                string profileLabel = normalSelected ? ProfileNormal : ProfileStrip;
+
+                if (string.IsNullOrWhiteSpace(profile.AgentId))
+                    throw new Exception($"Informe o Agent ID do perfil {profileLabel}.");
+
+                if (string.IsNullOrWhiteSpace(profile.AgentToken))
+                    throw new Exception($"Informe o Agent Token do perfil {profileLabel}.");
+
+                AddLog($"[{profileLabel}] Sincronizando configuração do site...");
+
+                using var client = new HttpClient();
+
+                var payload = new
+                {
+                    action = "get-config",
+                    agent_id = profile.AgentId,
+                    agent_token = profile.AgentToken,
+                    profile_type = profileType
+                };
+
+                string json = JsonConvert.SerializeObject(payload);
+                using var content = new StringContent(json, Encoding.UTF8, "application/json");
+                using var response = await client.PostAsync(config.ApiBaseUrl, content);
+                string body = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                    throw new Exception($"HTTP {(int)response.StatusCode}: {body}");
+
+                var apiResponse = JsonConvert.DeserializeObject<RemoteConfigResponse>(body);
+                if (apiResponse == null || !apiResponse.Ok || apiResponse.Config == null)
+                    throw new Exception(apiResponse?.Error ?? "A API não retornou uma configuração válida.");
+
+                ApplyRemoteConfigToUi(normalSelected, apiResponse.Config);
+                SaveCurrentConfigToDisk();
+
+                AddLog($"[{profileLabel}] Configuração sincronizada com sucesso.");
+                MessageBox.Show(
+                    $"Configuração do perfil {profileLabel} sincronizada com sucesso.",
+                    "Sincronização concluída",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                AddLog("Erro ao sincronizar do site: " + ex.Message);
+                MessageBox.Show(
+                    "Erro ao sincronizar do site:\n" + ex.Message,
+                    "Erro",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void ApplyRemoteConfigToUi(bool normalProfile, RemoteProfileConfig config)
+        {
+            ComboBox printerCombo = normalProfile ? cmbNormalPrinter : cmbStripPrinter;
+            ComboBox paperCombo = normalProfile ? cmbNormalPaper : cmbStripPaper;
+            ComboBox rotationCombo = normalProfile ? cmbNormalRotation : cmbStripRotation;
+            NumericUpDown dpiControl = normalProfile ? nudNormalDpi : nudStripDpi;
+            NumericUpDown bleedControl = normalProfile ? nudNormalBleed : nudStripBleed;
+            NumericUpDown offsetXControl = normalProfile ? nudNormalOffsetX : nudStripOffsetX;
+            NumericUpDown offsetYControl = normalProfile ? nudNormalOffsetY : nudStripOffsetY;
+
+            if (!string.IsNullOrWhiteSpace(config.WindowsPrinterName))
+            {
+                SelectComboIfExists(printerCombo, config.WindowsPrinterName);
+            }
+
+            RefreshPaperLists();
+
+            if (!string.IsNullOrWhiteSpace(config.PaperName))
+            {
+                SelectComboIfExists(paperCombo, config.PaperName);
+            }
+
+            if (!string.IsNullOrWhiteSpace(config.RotationMode) && rotationCombo.Items.Contains(config.RotationMode))
+            {
+                rotationCombo.SelectedItem = config.RotationMode;
+            }
+
+            dpiControl.Value = ClampNumeric(dpiControl, config.Dpi ?? 300);
+            bleedControl.Value = ClampNumeric(bleedControl, config.Bleed ?? (normalProfile ? 8 : 0));
+            offsetXControl.Value = ClampNumeric(offsetXControl, config.OffsetX ?? 0);
+            offsetYControl.Value = ClampNumeric(offsetYControl, config.OffsetY ?? 0);
+        }
+
+        private class RemoteConfigResponse
+        {
+            [JsonProperty("ok")]
+            public bool Ok { get; set; }
+
+            [JsonProperty("error")]
+            public string? Error { get; set; }
+
+            [JsonProperty("config")]
+            public RemoteProfileConfig? Config { get; set; }
+        }
+
+        private class RemoteProfileConfig
+        {
+            [JsonProperty("profile_type")]
+            public string? ProfileType { get; set; }
+
+            [JsonProperty("windows_printer_name")]
+            public string? WindowsPrinterName { get; set; }
+
+            [JsonProperty("paper_name")]
+            public string? PaperName { get; set; }
+
+            [JsonProperty("dpi")]
+            public int? Dpi { get; set; }
+
+            [JsonProperty("rotation_mode")]
+            public string? RotationMode { get; set; }
+
+            [JsonProperty("bleed")]
+            public int? Bleed { get; set; }
+
+            [JsonProperty("offset_x")]
+            public int? OffsetX { get; set; }
+
+            [JsonProperty("offset_y")]
+            public int? OffsetY { get; set; }
         }
 
         private async Task StartSelectedProfileAsync()
