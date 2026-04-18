@@ -282,13 +282,85 @@ namespace CBL.PrintAssistant
                     cmbStripPrinter.SelectedIndex = 0;
                 }
 
+                RefreshPaperLists();
                 TryRestoreSavedPrinters();
+                TryRestoreSavedPaperNames();
 
                 AddLog("Impressoras carregadas.");
             }
             catch (Exception ex)
             {
                 AddLog("Erro ao carregar impressoras: " + ex.Message);
+            }
+        }
+
+        private void cmbNormalPrinter_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            LoadPaperSizesForPrinter(cmbNormalPrinter, cmbNormalPaper, false);
+        }
+
+        private void cmbStripPrinter_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            LoadPaperSizesForPrinter(cmbStripPrinter, cmbStripPaper, true);
+        }
+
+        private void RefreshPaperLists()
+        {
+            LoadPaperSizesForPrinter(cmbNormalPrinter, cmbNormalPaper, false);
+            LoadPaperSizesForPrinter(cmbStripPrinter, cmbStripPaper, true);
+        }
+
+        private void LoadPaperSizesForPrinter(ComboBox printerCombo, ComboBox paperCombo, bool stripMode)
+        {
+            paperCombo.Items.Clear();
+
+            string? printerName = printerCombo.SelectedItem?.ToString();
+            if (string.IsNullOrWhiteSpace(printerName))
+                return;
+
+            try
+            {
+                using PrintDocument pd = new PrintDocument();
+                pd.PrinterSettings.PrinterName = printerName;
+
+                if (!pd.PrinterSettings.IsValid)
+                    return;
+
+                foreach (PaperSize ps in pd.PrinterSettings.PaperSizes)
+                {
+                    paperCombo.Items.Add(ps.PaperName);
+                }
+
+                if (paperCombo.Items.Count == 0)
+                    return;
+
+                if (stripMode)
+                    SelectPaperByPreferredNames(paperCombo, "6x2 inchx2 Type1(152x51 mmx2)", "6x2", "Type1");
+                else
+                    SelectPaperByPreferredNames(paperCombo, "6x4 inch(152x102 mm)", "6x4", "4x6");
+
+                if (paperCombo.SelectedIndex < 0)
+                    paperCombo.SelectedIndex = 0;
+            }
+            catch (Exception ex)
+            {
+                AddLog("Erro ao carregar papersize da impressora: " + ex.Message);
+            }
+        }
+
+        private void SelectPaperByPreferredNames(ComboBox combo, params string[] candidates)
+        {
+            foreach (string candidate in candidates)
+            {
+                for (int i = 0; i < combo.Items.Count; i++)
+                {
+                    string itemText = combo.Items[i]?.ToString() ?? "";
+                    if (itemText.IndexOf(candidate, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        combo.SelectedIndex = i;
+                        return;
+                    }
+                }
             }
         }
 
@@ -306,6 +378,7 @@ namespace CBL.PrintAssistant
                     AgentId = txtNormalAgentId.Text.Trim(),
                     AgentToken = txtNormalToken.Text.Trim(),
                     PrinterName = cmbNormalPrinter.SelectedItem?.ToString() ?? "",
+                    PaperName = cmbNormalPaper.SelectedItem?.ToString() ?? "",
                     RotationMode = cmbNormalRotation.SelectedItem?.ToString() ?? "Automático",
                     Dpi = (int)nudNormalDpi.Value,
                     Bleed = (int)nudNormalBleed.Value,
@@ -317,6 +390,7 @@ namespace CBL.PrintAssistant
                     AgentId = txtStripAgentId.Text.Trim(),
                     AgentToken = txtStripToken.Text.Trim(),
                     PrinterName = cmbStripPrinter.SelectedItem?.ToString() ?? "",
+                    PaperName = cmbStripPaper.SelectedItem?.ToString() ?? "",
                     RotationMode = cmbStripRotation.SelectedItem?.ToString() ?? "Automático",
                     Dpi = (int)nudStripDpi.Value,
                     Bleed = (int)nudStripBleed.Value,
@@ -401,6 +475,8 @@ namespace CBL.PrintAssistant
                     cmbActiveProfile.SelectedItem = ProfileNormal;
 
                 TryRestoreSavedPrinters();
+                RefreshPaperLists();
+                TryRestoreSavedPaperNames();
                 UpdateActiveProfileUi();
 
                 AddLog("Configuração carregada.");
@@ -423,18 +499,39 @@ namespace CBL.PrintAssistant
             if (_currentConfig == null)
                 return;
 
-            SelectPrinterIfExists(cmbNormalPrinter, _currentConfig.NormalProfile.PrinterName);
-            SelectPrinterIfExists(cmbStripPrinter, _currentConfig.StripProfile.PrinterName);
+            SelectComboIfExists(cmbNormalPrinter, _currentConfig.NormalProfile.PrinterName);
+            SelectComboIfExists(cmbStripPrinter, _currentConfig.StripProfile.PrinterName);
         }
 
-        private void SelectPrinterIfExists(ComboBox combo, string printerName)
+        private void TryRestoreSavedPaperNames()
         {
-            if (string.IsNullOrWhiteSpace(printerName))
+            if (_currentConfig == null)
+                return;
+
+            SelectComboIfExists(cmbNormalPaper, _currentConfig.NormalProfile.PaperName);
+            SelectComboIfExists(cmbStripPaper, _currentConfig.StripProfile.PaperName);
+
+            if (cmbNormalPaper.SelectedIndex < 0)
+                SelectPaperByPreferredNames(cmbNormalPaper, "6x4 inch(152x102 mm)", "6x4", "4x6");
+
+            if (cmbStripPaper.SelectedIndex < 0)
+                SelectPaperByPreferredNames(cmbStripPaper, "6x2 inchx2 Type1(152x51 mmx2)", "6x2", "Type1");
+
+            if (cmbNormalPaper.Items.Count > 0 && cmbNormalPaper.SelectedIndex < 0)
+                cmbNormalPaper.SelectedIndex = 0;
+
+            if (cmbStripPaper.Items.Count > 0 && cmbStripPaper.SelectedIndex < 0)
+                cmbStripPaper.SelectedIndex = 0;
+        }
+
+        private void SelectComboIfExists(ComboBox combo, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
                 return;
 
             for (int i = 0; i < combo.Items.Count; i++)
             {
-                if (string.Equals(combo.Items[i]?.ToString(), printerName, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(combo.Items[i]?.ToString(), value, StringComparison.OrdinalIgnoreCase))
                 {
                     combo.SelectedIndex = i;
                     return;
@@ -655,6 +752,9 @@ namespace CBL.PrintAssistant
 
             if (string.IsNullOrWhiteSpace(profile.PrinterName))
                 throw new Exception($"Selecione a impressora Windows do perfil {profileName}.");
+
+            if (string.IsNullOrWhiteSpace(profile.PaperName))
+                throw new Exception($"Selecione o PaperSize do perfil {profileName}.");
         }
 
         private async Task ListenLoopAsync(
@@ -850,29 +950,16 @@ namespace CBL.PrintAssistant
 
             finalImage.SetResolution(profile.Dpi, profile.Dpi);
 
-            PrintDocument printDocument = new PrintDocument();
+            using PrintDocument printDocument = new PrintDocument();
             printDocument.PrinterSettings.PrinterName = profile.PrinterName;
 
             if (!printDocument.PrinterSettings.IsValid)
                 throw new Exception("A impressora selecionada não é válida no Windows.");
 
-            PaperSize? selectedPaper = null;
-
-            foreach (PaperSize ps in printDocument.PrinterSettings.PaperSizes)
-            {
-                bool is4x6 =
-                    (ps.Width == 600 && ps.Height == 400) ||
-                    (ps.Width == 400 && ps.Height == 600);
-
-                if (is4x6)
-                {
-                    selectedPaper = ps;
-                    break;
-                }
-            }
+            PaperSize? selectedPaper = FindPaperSize(printDocument, profile.PaperName);
 
             if (selectedPaper == null)
-                selectedPaper = new PaperSize("4x6", 400, 600);
+                throw new Exception($"PaperSize não encontrado na impressora: {profile.PaperName}");
 
             bool landscape = finalImage.Width >= finalImage.Height;
 
@@ -907,6 +994,30 @@ namespace CBL.PrintAssistant
             };
 
             printDocument.Print();
+        }
+
+        private PaperSize? FindPaperSize(PrintDocument printDocument, string savedPaperName)
+        {
+            foreach (PaperSize ps in printDocument.PrinterSettings.PaperSizes)
+            {
+                if (!string.IsNullOrWhiteSpace(savedPaperName) &&
+                    string.Equals(ps.PaperName, savedPaperName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ps;
+                }
+            }
+
+            foreach (PaperSize ps in printDocument.PrinterSettings.PaperSizes)
+            {
+                bool is4x6 =
+                    (ps.Width == 600 && ps.Height == 400) ||
+                    (ps.Width == 400 && ps.Height == 600);
+
+                if (is4x6)
+                    return ps;
+            }
+
+            return null;
         }
 
         private Bitmap CreateStripSheet(Bitmap stripImage, int dpi)

@@ -17,6 +17,7 @@ namespace CBL.PrintAssistant
         public string AgentId { get; set; } = "";
         public string AgentToken { get; set; } = "";
         public string PrinterName { get; set; } = "";
+        public string PaperName { get; set; } = "";
         public string RotationMode { get; set; } = "Automático";
         public int Dpi { get; set; } = 300;
         public int Bleed { get; set; } = 8;
