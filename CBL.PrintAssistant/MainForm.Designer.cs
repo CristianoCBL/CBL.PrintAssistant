@@ -25,6 +25,8 @@ namespace CBL.PrintAssistant
             label3 = new Label();
             txtKioskId = new TextBox();
             chkStartWithWindows = new CheckBox();
+            chkAutoStartListening = new CheckBox();
+            chkEnableLocalIntegration = new CheckBox();
             btnLoadPrinters = new Button();
             btnSaveConfig = new Button();
             btnStartAll = new Button();
@@ -101,7 +103,7 @@ namespace CBL.PrintAssistant
             label1.Location = new Point(18, 15);
             label1.Name = "label1";
             label1.Size = new Size(76, 15);
-            label1.TabIndex = 18;
+            label1.TabIndex = 20;
             label1.Text = "API Base URL";
             // 
             // txtSupabaseUrl
@@ -109,7 +111,7 @@ namespace CBL.PrintAssistant
             txtSupabaseUrl.Location = new Point(18, 33);
             txtSupabaseUrl.Name = "txtSupabaseUrl";
             txtSupabaseUrl.Size = new Size(446, 23);
-            txtSupabaseUrl.TabIndex = 17;
+            txtSupabaseUrl.TabIndex = 19;
             // 
             // label2
             // 
@@ -117,7 +119,7 @@ namespace CBL.PrintAssistant
             label2.Location = new Point(18, 68);
             label2.Name = "label2";
             label2.Size = new Size(43, 15);
-            label2.TabIndex = 16;
+            label2.TabIndex = 18;
             label2.Text = "Unit ID";
             // 
             // txtUnitId
@@ -125,7 +127,7 @@ namespace CBL.PrintAssistant
             txtUnitId.Location = new Point(18, 86);
             txtUnitId.Name = "txtUnitId";
             txtUnitId.Size = new Size(220, 23);
-            txtUnitId.TabIndex = 15;
+            txtUnitId.TabIndex = 17;
             // 
             // label3
             // 
@@ -133,7 +135,7 @@ namespace CBL.PrintAssistant
             label3.Location = new Point(244, 68);
             label3.Name = "label3";
             label3.Size = new Size(49, 15);
-            label3.TabIndex = 14;
+            label3.TabIndex = 16;
             label3.Text = "Kiosk ID";
             // 
             // txtKioskId
@@ -141,7 +143,7 @@ namespace CBL.PrintAssistant
             txtKioskId.Location = new Point(244, 86);
             txtKioskId.Name = "txtKioskId";
             txtKioskId.Size = new Size(220, 23);
-            txtKioskId.TabIndex = 13;
+            txtKioskId.TabIndex = 15;
             // 
             // chkStartWithWindows
             // 
@@ -149,8 +151,30 @@ namespace CBL.PrintAssistant
             chkStartWithWindows.Location = new Point(18, 121);
             chkStartWithWindows.Name = "chkStartWithWindows";
             chkStartWithWindows.Size = new Size(147, 19);
-            chkStartWithWindows.TabIndex = 12;
+            chkStartWithWindows.TabIndex = 14;
             chkStartWithWindows.Text = "Iniciar com o Windows";
+            // 
+            // chkAutoStartListening
+            // 
+            chkAutoStartListening.AutoSize = true;
+            chkAutoStartListening.Checked = true;
+            chkAutoStartListening.CheckState = CheckState.Checked;
+            chkAutoStartListening.Location = new Point(18, 146);
+            chkAutoStartListening.Name = "chkAutoStartListening";
+            chkAutoStartListening.Size = new Size(192, 19);
+            chkAutoStartListening.TabIndex = 13;
+            chkAutoStartListening.Text = "Iniciar escuta automaticamente";
+            // 
+            // chkEnableLocalIntegration
+            // 
+            chkEnableLocalIntegration.AutoSize = true;
+            chkEnableLocalIntegration.Checked = true;
+            chkEnableLocalIntegration.CheckState = CheckState.Checked;
+            chkEnableLocalIntegration.Location = new Point(244, 146);
+            chkEnableLocalIntegration.Name = "chkEnableLocalIntegration";
+            chkEnableLocalIntegration.Size = new Size(201, 19);
+            chkEnableLocalIntegration.TabIndex = 12;
+            chkEnableLocalIntegration.Text = "Permitir integração local site/app";
             // 
             // btnLoadPrinters
             // 
@@ -211,7 +235,7 @@ namespace CBL.PrintAssistant
             lblRunMode.AutoSize = true;
             lblRunMode.Location = new Point(482, 71);
             lblRunMode.Name = "lblRunMode";
-            lblRunMode.Size = new Size(99, 15);
+            lblRunMode.Size = new Size(107, 15);
             lblRunMode.TabIndex = 5;
             lblRunMode.Text = "Modo de execução";
             // 
@@ -744,6 +768,8 @@ namespace CBL.PrintAssistant
             Controls.Add(btnStartAll);
             Controls.Add(btnSaveConfig);
             Controls.Add(btnLoadPrinters);
+            Controls.Add(chkEnableLocalIntegration);
+            Controls.Add(chkAutoStartListening);
             Controls.Add(chkStartWithWindows);
             Controls.Add(txtKioskId);
             Controls.Add(label3);
@@ -781,6 +807,8 @@ namespace CBL.PrintAssistant
         private Label label3;
         private TextBox txtKioskId;
         private CheckBox chkStartWithWindows;
+        private CheckBox chkAutoStartListening;
+        private CheckBox chkEnableLocalIntegration;
         private Button btnLoadPrinters;
         private Button btnSaveConfig;
         private Button btnStartAll;

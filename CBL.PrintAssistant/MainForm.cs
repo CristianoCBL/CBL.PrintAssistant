@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Drawing.Printing;
 using System.IO;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -9,7 +10,6 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace CBL.PrintAssistant
 {
@@ -31,12 +31,19 @@ namespace CBL.PrintAssistant
         private NotifyIcon? _trayIcon;
         private ContextMenuStrip? _trayMenu;
 
+        private System.Windows.Forms.Timer? _autoRetryTimer;
+        private bool _autoStartAttemptInProgress;
+
+        private HttpListener? _localConfigListener;
+        private CancellationTokenSource? _localConfigServerCts;
+
         private const string StartupRegistryName = "CBL.PrintAssistant";
         private const string GitHubOwner = "CristianoCBL";
         private const string GitHubRepo = "CBL.PrintAssistant";
         private const string ProfileNormal = "Normal";
         private const string ProfileStrip = "Tirinha";
         private const string ModeBoth = "Ambos";
+        private const string LocalListenerPrefix = "http://127.0.0.1:38451/";
 
         public MainForm()
         {
@@ -47,6 +54,8 @@ namespace CBL.PrintAssistant
             ConfigureRotationCombos();
             ConfigureRunModeSelector();
             InitializeTray();
+            InitializeAutoRetryTimer();
+
             SetStatus(lblNormalStatusDot, lblNormalStatusText, false);
             SetStatus(lblStripStatusDot, lblStripStatusText, false);
 
@@ -86,6 +95,13 @@ namespace CBL.PrintAssistant
             cmbRunMode.Items.Add(ProfileStrip);
             cmbRunMode.Items.Add(ModeBoth);
             cmbRunMode.SelectedIndex = 0;
+        }
+
+        private void InitializeAutoRetryTimer()
+        {
+            _autoRetryTimer = new System.Windows.Forms.Timer();
+            _autoRetryTimer.Interval = 30000;
+            _autoRetryTimer.Tick += async (s, e) => await AutoEnsureListeningAsync();
         }
 
         private string GetSelectedRunMode()
@@ -173,6 +189,10 @@ namespace CBL.PrintAssistant
                 }
             }
 
+            StartLocalConfigServerIfEnabled();
+            StartAutoRetryIfEnabled();
+
+            await AutoEnsureListeningAsync();
             await CheckForUpdatesAsync(false);
         }
 
@@ -210,6 +230,9 @@ namespace CBL.PrintAssistant
             try
             {
                 _allowClose = true;
+
+                StopAutoRetry();
+                StopLocalConfigServer();
 
                 _normalCts?.Cancel();
                 _normalCts?.Dispose();
@@ -392,6 +415,8 @@ namespace CBL.PrintAssistant
                 UnitId = txtUnitId.Text.Trim(),
                 KioskId = txtKioskId.Text.Trim(),
                 StartWithWindows = chkStartWithWindows.Checked,
+                AutoStartListening = chkAutoStartListening.Checked,
+                EnableLocalIntegration = chkEnableLocalIntegration.Checked,
                 RunMode = GetSelectedRunMode(),
                 NormalProfile = new PrintProfileConfig
                 {
@@ -443,6 +468,16 @@ namespace CBL.PrintAssistant
             File.WriteAllText(_configPath, JsonConvert.SerializeObject(config, Formatting.Indented));
             _currentConfig = config;
             ApplyStartupSetting(config.StartWithWindows);
+
+            if (config.EnableLocalIntegration)
+                StartLocalConfigServerIfEnabled();
+            else
+                StopLocalConfigServer();
+
+            if (config.AutoStartListening)
+                StartAutoRetryIfEnabled();
+            else
+                StopAutoRetry();
         }
 
         private void LoadConfig()
@@ -464,6 +499,8 @@ namespace CBL.PrintAssistant
                 txtUnitId.Text = config.UnitId;
                 txtKioskId.Text = config.KioskId;
                 chkStartWithWindows.Checked = config.StartWithWindows;
+                chkAutoStartListening.Checked = config.AutoStartListening;
+                chkEnableLocalIntegration.Checked = config.EnableLocalIntegration;
 
                 txtNormalAgentId.Text = string.IsNullOrWhiteSpace(config.NormalProfile.AgentId)
                     ? Environment.MachineName + "-normal"
@@ -670,65 +707,20 @@ namespace CBL.PrintAssistant
             NumericUpDown offsetYControl = normalProfile ? nudNormalOffsetY : nudStripOffsetY;
 
             if (!string.IsNullOrWhiteSpace(config.WindowsPrinterName))
-            {
                 SelectComboIfExists(printerCombo, config.WindowsPrinterName);
-            }
 
             RefreshPaperLists();
 
             if (!string.IsNullOrWhiteSpace(config.PaperName))
-            {
                 SelectComboIfExists(paperCombo, config.PaperName);
-            }
 
             if (!string.IsNullOrWhiteSpace(config.RotationMode) && rotationCombo.Items.Contains(config.RotationMode))
-            {
                 rotationCombo.SelectedItem = config.RotationMode;
-            }
 
             dpiControl.Value = ClampNumeric(dpiControl, config.Dpi ?? 300);
             bleedControl.Value = ClampNumeric(bleedControl, config.Bleed ?? (normalProfile ? 8 : 0));
             offsetXControl.Value = ClampNumeric(offsetXControl, config.OffsetX ?? 0);
             offsetYControl.Value = ClampNumeric(offsetYControl, config.OffsetY ?? 0);
-        }
-
-        private class RemoteConfigResponse
-        {
-            [JsonProperty("ok")]
-            public bool Ok { get; set; }
-
-            [JsonProperty("error")]
-            public string? Error { get; set; }
-
-            [JsonProperty("config")]
-            public RemoteProfileConfig? Config { get; set; }
-        }
-
-        private class RemoteProfileConfig
-        {
-            [JsonProperty("profile_type")]
-            public string? ProfileType { get; set; }
-
-            [JsonProperty("windows_printer_name")]
-            public string? WindowsPrinterName { get; set; }
-
-            [JsonProperty("paper_name")]
-            public string? PaperName { get; set; }
-
-            [JsonProperty("dpi")]
-            public int? Dpi { get; set; }
-
-            [JsonProperty("rotation_mode")]
-            public string? RotationMode { get; set; }
-
-            [JsonProperty("bleed")]
-            public int? Bleed { get; set; }
-
-            [JsonProperty("offset_x")]
-            public int? OffsetX { get; set; }
-
-            [JsonProperty("offset_y")]
-            public int? OffsetY { get; set; }
         }
 
         private async Task StartSelectedModeAsync()
@@ -760,6 +752,59 @@ namespace CBL.PrintAssistant
 
             await StartNormalAsync(config);
             await StartStripAsync(config);
+        }
+
+        private bool IsSelectedModeRunning()
+        {
+            string mode = GetSelectedRunMode();
+            if (mode == ProfileNormal)
+                return _normalListening;
+            if (mode == ProfileStrip)
+                return _stripListening;
+            return _normalListening && _stripListening;
+        }
+
+        private void StartAutoRetryIfEnabled()
+        {
+            if (chkAutoStartListening.Checked)
+                _autoRetryTimer?.Start();
+        }
+
+        private void StopAutoRetry()
+        {
+            _autoRetryTimer?.Stop();
+        }
+
+        private async Task AutoEnsureListeningAsync()
+        {
+            if (!chkAutoStartListening.Checked)
+                return;
+
+            if (_autoStartAttemptInProgress)
+                return;
+
+            if (IsSelectedModeRunning())
+                return;
+
+            _autoStartAttemptInProgress = true;
+            try
+            {
+                AddLog("Auto conexão: verificando listeners...");
+                await StartSelectedModeAsync();
+
+                if (!IsSelectedModeRunning())
+                    AddLog("Sem conexão com a API/rede. Nova tentativa em 30 segundos.");
+                else
+                    AddLog("Conexão restabelecida. Listener ativo.");
+            }
+            catch (Exception ex)
+            {
+                AddLog("Falha na auto conexão: " + ex.Message);
+            }
+            finally
+            {
+                _autoStartAttemptInProgress = false;
+            }
         }
 
         private void StopAll()
@@ -1293,15 +1338,11 @@ namespace CBL.PrintAssistant
         {
             try
             {
-                AddLog("Verificando atualizações...");
-
                 var currentVersion = new Version(Application.ProductVersion.Split('+')[0]);
                 var result = await _updateService.CheckForUpdateAsync(GitHubOwner, GitHubRepo, currentVersion);
 
                 if (!result.HasUpdate)
                 {
-                    AddLog("Nenhuma atualização encontrada.");
-
                     if (manual)
                     {
                         MessageBox.Show("Você já está na versão mais recente.", "Atualização",
@@ -1311,7 +1352,8 @@ namespace CBL.PrintAssistant
                     return;
                 }
 
-                AddLog($"Nova versão encontrada: {result.LatestVersion}");
+                if (!manual)
+                    return;
 
                 var ask = MessageBox.Show(
                     $"Nova versão disponível: {result.LatestVersion}\n\nDeseja baixar e atualizar agora?",
@@ -1336,8 +1378,6 @@ namespace CBL.PrintAssistant
             }
             catch (Exception ex)
             {
-                AddLog("Erro ao verificar atualização: " + ex.Message);
-
                 if (manual)
                 {
                     MessageBox.Show("Erro ao verificar atualização:\n" + ex.Message, "Erro",
@@ -1349,6 +1389,322 @@ namespace CBL.PrintAssistant
         private void btnCheckUpdates_Click(object sender, EventArgs e)
         {
             _ = CheckForUpdatesAsync(true);
+        }
+
+        private void StartLocalConfigServerIfEnabled()
+        {
+            if (!chkEnableLocalIntegration.Checked)
+                return;
+
+            if (_localConfigListener != null)
+                return;
+
+            try
+            {
+                _localConfigServerCts = new CancellationTokenSource();
+                _localConfigListener = new HttpListener();
+                _localConfigListener.Prefixes.Add(LocalListenerPrefix);
+                _localConfigListener.Start();
+
+                AddLog("Integração local ativa em " + LocalListenerPrefix);
+                _ = Task.Run(() => LocalConfigServerLoopAsync(_localConfigServerCts.Token));
+            }
+            catch (Exception ex)
+            {
+                AddLog("Não foi possível iniciar integração local: " + ex.Message);
+            }
+        }
+
+        private void StopLocalConfigServer()
+        {
+            try
+            {
+                _localConfigServerCts?.Cancel();
+                _localConfigListener?.Stop();
+                _localConfigListener?.Close();
+            }
+            catch
+            {
+            }
+            finally
+            {
+                _localConfigListener = null;
+                _localConfigServerCts?.Dispose();
+                _localConfigServerCts = null;
+            }
+        }
+
+        private async Task LocalConfigServerLoopAsync(CancellationToken cancellationToken)
+        {
+            while (!cancellationToken.IsCancellationRequested && _localConfigListener != null)
+            {
+                HttpListenerContext? ctx = null;
+                try
+                {
+                    ctx = await _localConfigListener.GetContextAsync();
+                    _ = Task.Run(() => HandleLocalRequestAsync(ctx), cancellationToken);
+                }
+                catch (HttpListenerException)
+                {
+                    break;
+                }
+                catch (ObjectDisposedException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    AddLog("Erro na integração local: " + ex.Message);
+                }
+            }
+        }
+
+        private async Task HandleLocalRequestAsync(HttpListenerContext context)
+        {
+            try
+            {
+                string path = context.Request.Url?.AbsolutePath?.Trim('/').ToLowerInvariant() ?? "";
+
+                ApplyCorsHeaders(context.Response);
+
+                if (context.Request.HttpMethod == "OPTIONS")
+                {
+                    context.Response.StatusCode = 204;
+                    context.Response.Close();
+                    return;
+                }
+
+                if (context.Request.HttpMethod == "GET" && path == "ping")
+                {
+                    await WriteJsonResponseAsync(context.Response, 200, new { ok = true, app = "CBL.PrintAssistant" });
+                    return;
+                }
+
+                if (context.Request.HttpMethod == "POST" && path == "apply-config")
+                {
+                    using var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding);
+                    string body = await reader.ReadToEndAsync();
+
+                    var payload = JsonConvert.DeserializeObject<LocalApplyConfigRequest>(body);
+                    if (payload == null)
+                    {
+                        await WriteJsonResponseAsync(context.Response, 400, new { ok = false, error = "Payload inválido." });
+                        return;
+                    }
+
+                    await ApplyLocalConfigPayloadAsync(payload);
+                    await WriteJsonResponseAsync(context.Response, 200, new { ok = true });
+                    return;
+                }
+
+                await WriteJsonResponseAsync(context.Response, 404, new { ok = false, error = "Rota não encontrada." });
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    ApplyCorsHeaders(context.Response);
+                    await WriteJsonResponseAsync(context.Response, 500, new { ok = false, error = ex.Message });
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private void ApplyCorsHeaders(HttpListenerResponse response)
+        {
+            response.Headers["Access-Control-Allow-Origin"] = "*";
+            response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
+            response.Headers["Access-Control-Allow-Headers"] = "Content-Type";
+        }
+
+        private async Task WriteJsonResponseAsync(HttpListenerResponse response, int statusCode, object payload)
+        {
+            ApplyCorsHeaders(response);
+            response.StatusCode = statusCode;
+            response.ContentType = "application/json; charset=utf-8";
+            string json = JsonConvert.SerializeObject(payload);
+            byte[] data = Encoding.UTF8.GetBytes(json);
+            await response.OutputStream.WriteAsync(data, 0, data.Length);
+            response.OutputStream.Close();
+        }
+
+        private async Task ApplyLocalConfigPayloadAsync(LocalApplyConfigRequest payload)
+        {
+            await RunOnUiThreadAsync(async () =>
+            {
+                txtSupabaseUrl.Text = payload.ApiBaseUrl ?? txtSupabaseUrl.Text;
+                txtUnitId.Text = payload.UnitId ?? txtUnitId.Text;
+                txtKioskId.Text = payload.KioskId ?? txtKioskId.Text;
+
+                if (!string.IsNullOrWhiteSpace(payload.RunMode) && cmbRunMode.Items.Contains(payload.RunMode))
+                    cmbRunMode.SelectedItem = payload.RunMode;
+
+                ApplyLocalProfileToUi(true, payload.NormalProfile);
+                ApplyLocalProfileToUi(false, payload.StripProfile);
+
+                RefreshPaperLists();
+                SaveCurrentConfigToDisk();
+                AddLog("Configuração recebida do site/localhost.");
+
+                if (chkAutoStartListening.Checked)
+                    await StartSelectedModeAsync();
+            });
+        }
+
+        private void ApplyLocalProfileToUi(bool normalProfile, LocalProfileDto? profile)
+        {
+            if (profile == null)
+                return;
+
+            TextBox agentIdText = normalProfile ? txtNormalAgentId : txtStripAgentId;
+            TextBox agentTokenText = normalProfile ? txtNormalToken : txtStripToken;
+            ComboBox printerCombo = normalProfile ? cmbNormalPrinter : cmbStripPrinter;
+            ComboBox paperCombo = normalProfile ? cmbNormalPaper : cmbStripPaper;
+            ComboBox rotationCombo = normalProfile ? cmbNormalRotation : cmbStripRotation;
+            NumericUpDown dpiControl = normalProfile ? nudNormalDpi : nudStripDpi;
+            NumericUpDown bleedControl = normalProfile ? nudNormalBleed : nudStripBleed;
+            NumericUpDown offsetXControl = normalProfile ? nudNormalOffsetX : nudStripOffsetX;
+            NumericUpDown offsetYControl = normalProfile ? nudNormalOffsetY : nudStripOffsetY;
+
+            if (!string.IsNullOrWhiteSpace(profile.AgentId))
+                agentIdText.Text = profile.AgentId;
+            if (!string.IsNullOrWhiteSpace(profile.AgentToken))
+                agentTokenText.Text = profile.AgentToken;
+            if (!string.IsNullOrWhiteSpace(profile.PrinterName))
+                SelectComboIfExists(printerCombo, profile.PrinterName);
+
+            RefreshPaperLists();
+
+            if (!string.IsNullOrWhiteSpace(profile.PaperName))
+                SelectComboIfExists(paperCombo, profile.PaperName);
+
+            if (!string.IsNullOrWhiteSpace(profile.RotationMode) && rotationCombo.Items.Contains(profile.RotationMode))
+                rotationCombo.SelectedItem = profile.RotationMode;
+
+            dpiControl.Value = ClampNumeric(dpiControl, profile.Dpi ?? 300);
+            bleedControl.Value = ClampNumeric(bleedControl, profile.Bleed ?? (normalProfile ? 8 : 0));
+            offsetXControl.Value = ClampNumeric(offsetXControl, profile.OffsetX ?? 0);
+            offsetYControl.Value = ClampNumeric(offsetYControl, profile.OffsetY ?? 0);
+        }
+
+        private Task RunOnUiThreadAsync(Func<Task> action)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+
+            void Execute()
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await action();
+                        tcs.TrySetResult(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs.TrySetException(ex);
+                    }
+                });
+            }
+
+            if (InvokeRequired)
+                BeginInvoke((Action)Execute);
+            else
+                Execute();
+
+            return tcs.Task;
+        }
+
+        private class RemoteConfigResponse
+        {
+            [JsonProperty("ok")]
+            public bool Ok { get; set; }
+
+            [JsonProperty("error")]
+            public string? Error { get; set; }
+
+            [JsonProperty("config")]
+            public RemoteProfileConfig? Config { get; set; }
+        }
+
+        private class RemoteProfileConfig
+        {
+            [JsonProperty("profile_type")]
+            public string? ProfileType { get; set; }
+
+            [JsonProperty("windows_printer_name")]
+            public string? WindowsPrinterName { get; set; }
+
+            [JsonProperty("paper_name")]
+            public string? PaperName { get; set; }
+
+            [JsonProperty("dpi")]
+            public int? Dpi { get; set; }
+
+            [JsonProperty("rotation_mode")]
+            public string? RotationMode { get; set; }
+
+            [JsonProperty("bleed")]
+            public int? Bleed { get; set; }
+
+            [JsonProperty("offset_x")]
+            public int? OffsetX { get; set; }
+
+            [JsonProperty("offset_y")]
+            public int? OffsetY { get; set; }
+        }
+
+        private class LocalApplyConfigRequest
+        {
+            [JsonProperty("api_base_url")]
+            public string? ApiBaseUrl { get; set; }
+
+            [JsonProperty("unit_id")]
+            public string? UnitId { get; set; }
+
+            [JsonProperty("kiosk_id")]
+            public string? KioskId { get; set; }
+
+            [JsonProperty("run_mode")]
+            public string? RunMode { get; set; }
+
+            [JsonProperty("normal_profile")]
+            public LocalProfileDto? NormalProfile { get; set; }
+
+            [JsonProperty("strip_profile")]
+            public LocalProfileDto? StripProfile { get; set; }
+        }
+
+        private class LocalProfileDto
+        {
+            [JsonProperty("agent_id")]
+            public string? AgentId { get; set; }
+
+            [JsonProperty("agent_token")]
+            public string? AgentToken { get; set; }
+
+            [JsonProperty("printer_name")]
+            public string? PrinterName { get; set; }
+
+            [JsonProperty("paper_name")]
+            public string? PaperName { get; set; }
+
+            [JsonProperty("dpi")]
+            public int? Dpi { get; set; }
+
+            [JsonProperty("rotation_mode")]
+            public string? RotationMode { get; set; }
+
+            [JsonProperty("bleed")]
+            public int? Bleed { get; set; }
+
+            [JsonProperty("offset_x")]
+            public int? OffsetX { get; set; }
+
+            [JsonProperty("offset_y")]
+            public int? OffsetY { get; set; }
         }
 
         private void AddLog(string message)

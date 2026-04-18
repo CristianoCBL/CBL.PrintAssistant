@@ -6,6 +6,8 @@ namespace CBL.PrintAssistant
         public string UnitId { get; set; } = "";
         public string KioskId { get; set; } = "";
         public bool StartWithWindows { get; set; }
+        public bool AutoStartListening { get; set; } = true;
+        public bool EnableLocalIntegration { get; set; } = true;
         public string RunMode { get; set; } = "Normal";
 
         public PrintProfileConfig NormalProfile { get; set; } = new PrintProfileConfig();
