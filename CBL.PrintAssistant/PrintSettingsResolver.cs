@@ -15,16 +15,17 @@ namespace CBL.PrintAssistant
 
             int contractVersion = job.ContractVersion.GetValueOrDefault(1);
             if (contractVersion < 1 || contractVersion > CurrentContractVersion)
+            {
                 throw new InvalidOperationException(
                     $"Versão de contrato de impressão não suportada: {contractVersion}. " +
                     $"Versão máxima suportada: {CurrentContractVersion}.");
+            }
 
             bool allowOverrides = appConfig.AllowJobOverrides;
 
-            string printerName = FirstNonEmpty(
-                allowOverrides ? job.WindowsPrinterName : null,
-                allowOverrides ? job.PrinterName : null,
-                localProfile.PrinterName);
+            // A impressora física sempre vem do perfil local confiável.
+            // Jobs remotos nunca podem escolher arbitrariamente uma impressora do Windows.
+            string printerName = FirstNonEmpty(localProfile.PrinterName);
 
             string paperName = FirstNonEmpty(
                 allowOverrides ? job.PaperSize : null,
@@ -40,10 +41,10 @@ namespace CBL.PrintAssistant
                 localProfile.RotationMode,
                 "Automático");
 
-            string fit = FirstNonEmpty(
+            string fit = ResolveFitMode(
+                contractVersion,
                 allowOverrides ? job.Fit : null,
-                localProfile.FitMode,
-                "Cover");
+                localProfile.FitMode);
 
             int copies = Math.Clamp(job.Copies <= 0 ? 1 : job.Copies, 1, 5);
 
@@ -66,6 +67,20 @@ namespace CBL.PrintAssistant
                 IsTest = job.IsTest == true,
                 ContractVersion = contractVersion
             };
+        }
+
+        private static string ResolveFitMode(
+            int contractVersion,
+            string? jobFit,
+            string? localFit)
+        {
+            if (!string.IsNullOrWhiteSpace(jobFit))
+                return jobFit;
+
+            if (contractVersion <= 1)
+                return "Stretch";
+
+            return FirstNonEmpty(localFit, "Cover");
         }
 
         private static int Clamp(int? overrideValue, int fallback, int min, int max)
@@ -100,7 +115,10 @@ namespace CBL.PrintAssistant
 
         private static string NormalizeRotation(string value)
         {
-            string normalized = value.Trim().Replace("graus", "", StringComparison.OrdinalIgnoreCase).Trim();
+            string normalized = value.Trim()
+                .Replace("graus", "", StringComparison.OrdinalIgnoreCase)
+                .Trim();
+
             return normalized switch
             {
                 "0" or "0°" => "0°",
