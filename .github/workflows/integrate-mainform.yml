@@ -3,8 +3,7 @@ name: Integrate MainForm
 on:
   push:
     branches: [feature/professional-v2]
-    paths:
-      - .github/workflows/integrate-mainform.yml
+    paths: [.github/workflows/integrate-mainform.yml]
 
 permissions:
   contents: write
@@ -16,10 +15,55 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feature/professional-v2
-
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-
-      - name: Patch MainForm
+      - name: Patch, build and commit
         shell: pwsh
+        run: |
+          $path = "CBL.PrintAssistant/MainForm.cs"
+          $text = Get-Content $path -Raw
+
+          $oldField = '        private readonly UpdateService _updateService = new UpdateService();'
+          $newField = "        private readonly UpdateService _updateService = new UpdateService();`r`n        private readonly JobPrintCoordinator _jobPrintCoordinator = new JobPrintCoordinator();"
+          if (-not $text.Contains($oldField)) { throw "Campo de referencia nao encontrado." }
+          $text = $text.Replace($oldField, $newField)
+
+          $oldPrint = @'
+                if (string.IsNullOrWhiteSpace(job.ImageUrl))
+                    throw new Exception("O job não trouxe image_url.");
+
+                bool isStripProfile = string.Equals(profileName, ProfileStrip, StringComparison.OrdinalIgnoreCase);
+
+                for (int i = 0; i < Math.Max(1, job.Copies); i++)
+                {
+                    await PrintImageFromUrlInternalAsync(job.ImageUrl, profile, isStripProfile, cancellationToken);
+                }
+'@
+          $newPrint = @'
+                int copiesPrinted = await _jobPrintCoordinator.PrintAsync(
+                    profileName,
+                    generalConfig,
+                    profile,
+                    job,
+                    AddLog,
+                    cancellationToken);
+'@
+          if (-not $text.Contains($oldPrint)) { throw "Bloco legado de impressao nao encontrado." }
+          $text = $text.Replace($oldPrint, $newPrint)
+
+          $oldCopies = '                        CopiesPrinted = Math.Max(1, job.Copies)'
+          $newCopies = '                        CopiesPrinted = copiesPrinted'
+          if (-not $text.Contains($oldCopies)) { throw "Campo CopiesPrinted nao encontrado." }
+          $text = $text.Replace($oldCopies, $newCopies)
+
+          Set-Content $path $text -Encoding utf8
+          dotnet restore CBL.PrintAssistant/CBL.PrintAssistant.csproj
+          dotnet build CBL.PrintAssistant/CBL.PrintAssistant.csproj -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add $path
+          git commit -m "Integra motor profissional ao processamento de jobs"
+          git push origin HEAD:feature/professional-v2
