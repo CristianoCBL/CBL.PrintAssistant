@@ -13,4 +13,10 @@ namespace CBL.PrintAssistant
         public int MarginTop { get; init; }
         public int MarginRight { get; init; }
         public int MarginBottom { get; init; }
-        public int OffsetX { get
+        public int OffsetX { get; init; }
+        public int OffsetY { get; init; }
+        public int Copies { get; init; } = 1;
+        public bool IsTest { get; init; }
+        public int ContractVersion { get; init; } = 1;
+    }
+}
