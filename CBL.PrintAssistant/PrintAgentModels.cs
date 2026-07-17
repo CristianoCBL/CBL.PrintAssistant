@@ -103,14 +103,53 @@ namespace CBL.PrintAssistant
         [JsonPropertyName("printer_name")]
         public string? PrinterName { get; set; }
 
+        [JsonPropertyName("windows_printer_name")]
+        public string? WindowsPrinterName { get; set; }
+
         [JsonPropertyName("copies")]
         public int Copies { get; set; } = 1;
 
         [JsonPropertyName("paper_size")]
         public string? PaperSize { get; set; }
 
+        [JsonPropertyName("orientation")]
+        public string? Orientation { get; set; }
+
+        [JsonPropertyName("rotation")]
+        public string? Rotation { get; set; }
+
+        [JsonPropertyName("fit")]
+        public string? Fit { get; set; }
+
         [JsonPropertyName("dpi")]
         public int? Dpi { get; set; }
+
+        [JsonPropertyName("bleed")]
+        public int? Bleed { get; set; }
+
+        [JsonPropertyName("margin_left")]
+        public int? MarginLeft { get; set; }
+
+        [JsonPropertyName("margin_top")]
+        public int? MarginTop { get; set; }
+
+        [JsonPropertyName("margin_right")]
+        public int? MarginRight { get; set; }
+
+        [JsonPropertyName("margin_bottom")]
+        public int? MarginBottom { get; set; }
+
+        [JsonPropertyName("offset_x")]
+        public int? OffsetX { get; set; }
+
+        [JsonPropertyName("offset_y")]
+        public int? OffsetY { get; set; }
+
+        [JsonPropertyName("is_test")]
+        public bool? IsTest { get; set; }
+
+        [JsonPropertyName("contract_version")]
+        public int? ContractVersion { get; set; }
 
         [JsonPropertyName("image_url")]
         public string ImageUrl { get; set; } = "";
