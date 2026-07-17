@@ -29,4 +29,51 @@ namespace CBL.PrintAssistant
                 localProfile,
                 job);
 
-            bool
+            bool stripMode = profileName.Equals(
+                "Tirinha",
+                StringComparison.OrdinalIgnoreCase);
+
+            LogEffectiveSettings(profileName, settings, stripMode, log);
+
+            for (int copy = 1; copy <= settings.Copies; copy++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                log?.Invoke(
+                    $"[{profileName}] Imprimindo cópia {copy}/{settings.Copies}" +
+                    (settings.IsTest ? " (teste)" : "") + ".");
+
+                await _engine.PrintFromUrlAsync(
+                    job.ImageUrl,
+                    settings,
+                    stripMode,
+                    cancellationToken);
+            }
+
+            return settings.Copies;
+        }
+
+        private static void LogEffectiveSettings(
+            string profileName,
+            EffectivePrintSettings settings,
+            bool stripMode,
+            Action<string>? log)
+        {
+            if (log is null)
+                return;
+
+            string jobKind = settings.IsTest ? "teste/calibração" : "produção";
+            string layout = stripMode ? "tirinha dupla" : "foto normal";
+
+            log(
+                $"[{profileName}] Job {jobKind}; contrato v{settings.ContractVersion}; " +
+                $"layout={layout}; cópias={settings.Copies}; " +
+                $"impressora=\"{settings.PrinterName}\"; papel=\"{settings.PaperName}\"; " +
+                $"orientação={settings.Orientation}; rotação={settings.RotationMode}; " +
+                $"ajuste={settings.FitMode}; DPI={settings.Dpi}; sangria={settings.Bleed}; " +
+                $"margens={settings.MarginLeft}/{settings.MarginTop}/" +
+                $"{settings.MarginRight}/{settings.MarginBottom}; " +
+                $"offset={settings.OffsetX}/{settings.OffsetY}.");
+        }
+    }
+}
