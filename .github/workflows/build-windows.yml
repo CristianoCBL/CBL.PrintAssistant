@@ -1,0 +1,38 @@
+name: Build Windows
+
+on:
+  push:
+    branches:
+      - feature/professional-v2
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore CBL.PrintAssistant/CBL.PrintAssistant.csproj
+
+      - name: Build
+        run: dotnet build CBL.PrintAssistant/CBL.PrintAssistant.csproj --configuration Release --no-restore
+
+      - name: Publish self-contained
+        run: dotnet publish CBL.PrintAssistant/CBL.PrintAssistant.csproj --configuration Release --runtime win-x64 --self-contained true --output publish
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CBL.PrintAssistant-win-x64
+          path: publish/**
+          if-no-files-found: error
