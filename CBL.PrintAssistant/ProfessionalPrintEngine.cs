@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Printing;
+using System.Text;
 
 namespace CBL.PrintAssistant
 {
@@ -83,9 +84,17 @@ namespace CBL.PrintAssistant
             if (!document.PrinterSettings.IsValid)
                 throw new InvalidOperationException($"Impressora inválida ou indisponível: {settings.PrinterName}");
 
-            PaperSize? paper = FindPaperSize(document, settings.PaperName);
+            PaperSize? paper = FindPaperSize(
+                document,
+                settings.PaperName,
+                settings.FallbackPaperName);
+
             if (paper is null)
-                throw new InvalidOperationException($"Papel não encontrado na impressora: {settings.PaperName}");
+            {
+                throw new InvalidOperationException(
+                    $"Papel não encontrado na impressora. Solicitado: {settings.PaperName}; " +
+                    $"fallback local: {settings.FallbackPaperName}.");
+            }
 
             document.DefaultPageSettings.PaperSize = paper;
             document.DefaultPageSettings.Landscape = ResolveLandscape(settings.Orientation, printable);
@@ -111,7 +120,8 @@ namespace CBL.PrintAssistant
         {
             if (string.IsNullOrWhiteSpace(settings.PrinterName))
                 throw new InvalidOperationException("Nenhuma impressora foi definida.");
-            if (string.IsNullOrWhiteSpace(settings.PaperName))
+            if (string.IsNullOrWhiteSpace(settings.PaperName) &&
+                string.IsNullOrWhiteSpace(settings.FallbackPaperName))
                 throw new InvalidOperationException("Nenhum papel foi definido.");
             if (settings.Dpi is < 72 or > 1200)
                 throw new InvalidOperationException("DPI fora do intervalo permitido (72–1200).");
@@ -192,22 +202,117 @@ namespace CBL.PrintAssistant
             graphics.CompositingQuality = CompositingQuality.HighQuality;
         }
 
-        private static PaperSize? FindPaperSize(PrintDocument document, string paperName)
+        private static PaperSize? FindPaperSize(
+            PrintDocument document,
+            string requestedPaperName,
+            string fallbackPaperName)
         {
-            foreach (PaperSize paper in document.PrinterSettings.PaperSizes)
+            PaperSize[] papers = document.PrinterSettings.PaperSizes
+                .Cast<PaperSize>()
+                .ToArray();
+
+            PaperSize? requested = FindPaperByNameOrAlias(papers, requestedPaperName);
+            if (requested is not null)
+                return requested;
+
+            if (!string.Equals(
+                    requestedPaperName,
+                    fallbackPaperName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                PaperSize? fallback = FindPaperByNameOrAlias(papers, fallbackPaperName);
+                if (fallback is not null)
+                    return fallback;
+            }
+
+            return null;
+        }
+
+        private static PaperSize? FindPaperByNameOrAlias(
+            IEnumerable<PaperSize> papers,
+            string paperName)
+        {
+            if (string.IsNullOrWhiteSpace(paperName))
+                return null;
+
+            string normalizedRequest = NormalizePaperName(paperName);
+            PaperSize[] candidates = papers.ToArray();
+
+            foreach (PaperSize paper in candidates)
             {
                 if (paper.PaperName.Equals(paperName, StringComparison.OrdinalIgnoreCase))
                     return paper;
             }
 
-            foreach (PaperSize paper in document.PrinterSettings.PaperSizes)
+            foreach (PaperSize paper in candidates)
             {
-                bool is4x6 = (paper.Width == 600 && paper.Height == 400) ||
-                             (paper.Width == 400 && paper.Height == 600);
-                if (is4x6) return paper;
+                string normalizedPaper = NormalizePaperName(paper.PaperName);
+                if (normalizedPaper == normalizedRequest)
+                    return paper;
+            }
+
+            foreach (PaperSize paper in candidates)
+            {
+                string normalizedPaper = NormalizePaperName(paper.PaperName);
+                if (IsSafeAliasMatch(normalizedRequest, normalizedPaper))
+                    return paper;
             }
 
             return null;
+        }
+
+        private static bool IsSafeAliasMatch(string requested, string installed)
+        {
+            if (string.IsNullOrWhiteSpace(requested) || string.IsNullOrWhiteSpace(installed))
+                return false;
+
+            if (requested == "6x4" || requested == "4x6")
+            {
+                return installed.StartsWith("6x4", StringComparison.Ordinal) ||
+                       installed.StartsWith("4x6", StringComparison.Ordinal) ||
+                       installed.Contains("152x102", StringComparison.Ordinal) ||
+                       installed.Contains("102x152", StringComparison.Ordinal);
+            }
+
+            if (requested == "6x2type1" || requested == "6x2x2type1")
+            {
+                return installed.Contains("6x2", StringComparison.Ordinal) &&
+                       installed.Contains("type1", StringComparison.Ordinal);
+            }
+
+            if (requested == "a4" || requested == "isoa4")
+            {
+                return installed == "a4" ||
+                       installed.StartsWith("isoa4", StringComparison.Ordinal) ||
+                       installed.Contains("210x297", StringComparison.Ordinal) ||
+                       installed.Contains("297x210", StringComparison.Ordinal);
+            }
+
+            if (requested == "a3" || requested == "isoa3")
+            {
+                return installed == "a3" ||
+                       installed.StartsWith("isoa3", StringComparison.Ordinal) ||
+                       installed.Contains("297x420", StringComparison.Ordinal) ||
+                       installed.Contains("420x297", StringComparison.Ordinal);
+            }
+
+            return false;
+        }
+
+        private static string NormalizePaperName(string value)
+        {
+            string normalized = value.Trim().ToLowerInvariant();
+            var builder = new StringBuilder(normalized.Length);
+
+            foreach (char c in normalized)
+            {
+                if (char.IsLetterOrDigit(c))
+                    builder.Append(c);
+                else if (c == '×')
+                    builder.Append('x');
+            }
+
+            return builder.ToString();
         }
 
         private static void ApplyRotation(Bitmap bitmap, string rotation)
