@@ -1,25 +1,61 @@
 name: Build Windows
+
 on:
   push:
     branches: [feature/professional-v2]
   pull_request:
     branches: [master]
+
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+
       - name: Restore
         run: dotnet restore CBL.PrintAssistant/CBL.PrintAssistant.csproj
+
       - name: Build
         run: dotnet build CBL.PrintAssistant/CBL.PrintAssistant.csproj -c Release --no-restore
+
       - name: Publish
         run: dotnet publish CBL.PrintAssistant/CBL.PrintAssistant.csproj -c Release -r win-x64 --self-contained true -o publish
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "installer\CBL.PrintAssistant.iss"'
+
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path checksums | Out-Null
+          Get-FileHash publish\CBL.PrintAssistant.exe -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  CBL.PrintAssistant.exe" } |
+            Set-Content checksums\CBL.PrintAssistant.exe.sha256 -Encoding ascii
+          Get-FileHash installer-output\CBL.PrintAssistant-Setup-2.0.0.exe -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  CBL.PrintAssistant-Setup-2.0.0.exe" } |
+            Set-Content checksums\CBL.PrintAssistant-Setup-2.0.0.exe.sha256 -Encoding ascii
+
       - uses: actions/upload-artifact@v4
         with:
           name: CBL.PrintAssistant-win-x64
           path: publish/**
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CBL.PrintAssistant-Setup-2.0.0
+          path: |
+            installer-output/CBL.PrintAssistant-Setup-2.0.0.exe
+            checksums/CBL.PrintAssistant-Setup-2.0.0.exe.sha256
+            checksums/CBL.PrintAssistant.exe.sha256
           if-no-files-found: error
