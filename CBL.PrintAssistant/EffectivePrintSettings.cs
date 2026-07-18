@@ -4,6 +4,7 @@ namespace CBL.PrintAssistant
     {
         public string PrinterName { get; init; } = "";
         public string PaperName { get; init; } = "";
+        public string FallbackPaperName { get; init; } = "";
         public string Orientation { get; init; } = "Automático";
         public string RotationMode { get; init; } = "Automático";
         public string FitMode { get; init; } = "Cover";
@@ -13,10 +14,4 @@ namespace CBL.PrintAssistant
         public int MarginTop { get; init; }
         public int MarginRight { get; init; }
         public int MarginBottom { get; init; }
-        public int OffsetX { get; init; }
-        public int OffsetY { get; init; }
-        public int Copies { get; init; } = 1;
-        public bool IsTest { get; init; }
-        public int ContractVersion { get; init; } = 1;
-    }
-}
+        public int
