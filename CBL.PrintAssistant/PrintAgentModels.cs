@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace CBL.PrintAssistant
 {
@@ -39,6 +39,22 @@ namespace CBL.PrintAssistant
 
         [JsonPropertyName("retryable")]
         public bool? Retryable { get; set; }
+
+        [JsonPropertyName("capabilities")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public PrintAgentCapabilities? Capabilities =>
+            Action.Equals("register", StringComparison.OrdinalIgnoreCase) ||
+            Action.Equals("heartbeat", StringComparison.OrdinalIgnoreCase)
+                ? PrintAgentCapabilities.ContractV2
+                : null;
+    }
+
+    public sealed class PrintAgentCapabilities
+    {
+        public static PrintAgentCapabilities ContractV2 { get; } = new PrintAgentCapabilities();
+
+        [JsonPropertyName("contract_v2")]
+        public bool ContractV2Enabled { get; init; } = true;
     }
 
     public class PrintAgentResponse
