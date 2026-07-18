@@ -50,7 +50,7 @@ namespace CBL.PrintAssistant
         {
             InitializeComponent();
 
-            _configPath = Path.Combine(Application.StartupPath, "appconfig.json");
+            _configPath = AppPaths.ResolveConfigPath(Application.StartupPath);
 
             ConfigureRotationCombos();
             ConfigureRunModeSelector();
@@ -466,7 +466,8 @@ namespace CBL.PrintAssistant
         private void SaveCurrentConfigToDisk()
         {
             var config = GetConfigFromForm();
-            File.WriteAllText(_configPath, JsonConvert.SerializeObject(config, Formatting.Indented));
+            AppConfig storageConfig = ConfigSecurity.CreateStorageCopy(config);
+            File.WriteAllText(_configPath, JsonConvert.SerializeObject(storageConfig, Formatting.Indented));
             _currentConfig = config;
             ApplyStartupSetting(config.StartWithWindows);
 
@@ -493,6 +494,13 @@ namespace CBL.PrintAssistant
 
                 if (config == null)
                     return;
+
+                bool migratedLegacyTokens = ConfigSecurity.UnprotectInPlace(config);
+                if (migratedLegacyTokens)
+                {
+                    AppConfig storageConfig = ConfigSecurity.CreateStorageCopy(config);
+                    File.WriteAllText(_configPath, JsonConvert.SerializeObject(storageConfig, Formatting.Indented));
+                }
 
                 _currentConfig = config;
 
@@ -1721,4 +1729,5 @@ namespace CBL.PrintAssistant
         }
     }
 }
+
 
