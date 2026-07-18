@@ -23,13 +23,14 @@ namespace CBL.PrintAssistant
 
             bool allowOverrides = appConfig.AllowJobOverrides;
 
-            // A impressora física sempre vem do perfil local confiável.
-            // Jobs remotos nunca podem escolher arbitrariamente uma impressora do Windows.
             string printerName = FirstNonEmpty(localProfile.PrinterName);
+            string localPaperName = FirstNonEmpty(localProfile.PaperName);
 
-            string paperName = FirstNonEmpty(
-                allowOverrides ? job.PaperSize : null,
-                localProfile.PaperName);
+            string paperName = contractVersion <= 1
+                ? localPaperName
+                : FirstNonEmpty(
+                    allowOverrides ? job.PaperSize : null,
+                    localPaperName);
 
             string orientation = FirstNonEmpty(
                 allowOverrides ? job.Orientation : null,
@@ -52,6 +53,7 @@ namespace CBL.PrintAssistant
             {
                 PrinterName = printerName,
                 PaperName = paperName,
+                FallbackPaperName = localPaperName,
                 Orientation = NormalizeOrientation(orientation),
                 RotationMode = NormalizeRotation(rotation),
                 FitMode = NormalizeFit(fit),
