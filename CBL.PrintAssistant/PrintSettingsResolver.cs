@@ -32,10 +32,12 @@ namespace CBL.PrintAssistant
                     allowOverrides ? job.PaperSize : null,
                     localPaperName);
 
-            string orientation = FirstNonEmpty(
-                allowOverrides ? job.Orientation : null,
-                localProfile.Orientation,
-                "Automático");
+            string orientation = contractVersion <= 1
+                ? "Retrato"
+                : FirstNonEmpty(
+                    allowOverrides ? job.Orientation : null,
+                    localProfile.Orientation,
+                    "Automático");
 
             string rotation = FirstNonEmpty(
                 allowOverrides ? job.Rotation : null,
@@ -80,7 +82,7 @@ namespace CBL.PrintAssistant
                 return jobFit;
 
             if (contractVersion <= 1)
-                return "Cover";
+                return "Contain";
 
             return FirstNonEmpty(localFit, "Cover");
         }
