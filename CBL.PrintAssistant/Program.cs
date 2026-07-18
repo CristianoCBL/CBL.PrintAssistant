@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Threading;
 
 namespace CBL.PrintAssistant
@@ -30,17 +29,26 @@ namespace CBL.PrintAssistant
             }
             catch (Exception ex)
             {
-                string logDirectory = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "CBL.PrintAssistant",
-                    "logs");
-                Directory.CreateDirectory(logDirectory);
+                string? crashLog = null;
 
-                string crashLog = Path.Combine(logDirectory, $"crash-{DateTime.Now:yyyyMMdd-HHmmss}.log");
-                File.WriteAllText(crashLog, ex.ToString());
+                try
+                {
+                    crashLog = Path.Combine(
+                        AppPaths.LogsDirectory,
+                        $"crash-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+                    File.WriteAllText(crashLog, ex.ToString());
+                }
+                catch
+                {
+                    // O relatório é auxiliar; uma falha de disco não deve ocultar o erro original.
+                }
+
+                string details = crashLog is null
+                    ? "Não foi possível salvar o relatório local."
+                    : $"Um relatório foi salvo em:\n{crashLog}";
 
                 MessageBox.Show(
-                    $"O aplicativo encontrou um erro inesperado.\n\nUm relatório foi salvo em:\n{crashLog}",
+                    $"O aplicativo encontrou um erro inesperado.\n\n{details}",
                     "CBL Print Assistant",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
