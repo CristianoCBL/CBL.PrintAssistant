@@ -80,7 +80,7 @@ namespace CBL.PrintAssistant
                 return jobFit;
 
             if (contractVersion <= 1)
-                return "Stretch";
+                return "Cover";
 
             return FirstNonEmpty(localFit, "Cover");
         }
