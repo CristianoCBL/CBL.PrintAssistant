@@ -1,0 +1,94 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [feature/professional-v2]
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Read application version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content "CBL.PrintAssistant/CBL.PrintAssistant.csproj"
+          $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Versão não encontrada no projeto."
+          }
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "INSTALLER_NAME=CBL.PrintAssistant-Setup-$version.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ZIP_NAME=CBL.PrintAssistant-win-x64-$version.zip" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Restore
+        run: dotnet restore CBL.PrintAssistant/CBL.PrintAssistant.csproj
+
+      - name: Build
+        run: dotnet build CBL.PrintAssistant/CBL.PrintAssistant.csproj -c Release --no-restore
+
+      - name: Publish
+        run: dotnet publish CBL.PrintAssistant/CBL.PrintAssistant.csproj -c Release -r win-x64 --self-contained true -o publish --no-restore
+
+      - name: Package updater ZIP
+        shell: pwsh
+        run: Compress-Archive -Path publish\* -DestinationPath $env:ZIP_NAME -Force
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:APP_VERSION" "installer\CBL.PrintAssistant.iss"'
+
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path checksums | Out-Null
+          Get-FileHash "installer-output\$env:INSTALLER_NAME" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $env:INSTALLER_NAME" } |
+            Set-Content "checksums\$env:INSTALLER_NAME.sha256" -Encoding ascii
+          Get-FileHash $env:ZIP_NAME -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $env:ZIP_NAME" } |
+            Set-Content "checksums\$env:ZIP_NAME.sha256" -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CBL.PrintAssistant-win-x64-${{ env.APP_VERSION }}
+          path: |
+            ${{ env.ZIP_NAME }}
+            checksums/${{ env.ZIP_NAME }}.sha256
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CBL.PrintAssistant-Setup-${{ env.APP_VERSION }}
+          path: |
+            installer-output/${{ env.INSTALLER_NAME }}
+            checksums/${{ env.INSTALLER_NAME }}.sha256
+          if-no-files-found: error
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            installer-output/${{ env.INSTALLER_NAME }}
+            ${{ env.ZIP_NAME }}
+            checksums/${{ env.INSTALLER_NAME }}.sha256
+            checksums/${{ env.ZIP_NAME }}.sha256

@@ -18,6 +18,7 @@ namespace CBL.PrintAssistant
         private readonly string _configPath;
         private readonly PrintAgentService _printAgentService = new PrintAgentService();
         private readonly UpdateService _updateService = new UpdateService();
+        private readonly JobPrintCoordinator _jobPrintCoordinator = new JobPrintCoordinator();
 
         private AppConfig? _currentConfig;
 
@@ -49,7 +50,7 @@ namespace CBL.PrintAssistant
         {
             InitializeComponent();
 
-            _configPath = Path.Combine(Application.StartupPath, "appconfig.json");
+            _configPath = AppPaths.ResolveConfigPath(Application.StartupPath);
 
             ConfigureRotationCombos();
             ConfigureRunModeSelector();
@@ -465,7 +466,8 @@ namespace CBL.PrintAssistant
         private void SaveCurrentConfigToDisk()
         {
             var config = GetConfigFromForm();
-            File.WriteAllText(_configPath, JsonConvert.SerializeObject(config, Formatting.Indented));
+            AppConfig storageConfig = ConfigSecurity.CreateStorageCopy(config);
+            File.WriteAllText(_configPath, JsonConvert.SerializeObject(storageConfig, Formatting.Indented));
             _currentConfig = config;
             ApplyStartupSetting(config.StartWithWindows);
 
@@ -492,6 +494,13 @@ namespace CBL.PrintAssistant
 
                 if (config == null)
                     return;
+
+                bool migratedLegacyTokens = ConfigSecurity.UnprotectInPlace(config);
+                if (migratedLegacyTokens)
+                {
+                    AppConfig storageConfig = ConfigSecurity.CreateStorageCopy(config);
+                    File.WriteAllText(_configPath, JsonConvert.SerializeObject(storageConfig, Formatting.Indented));
+                }
 
                 _currentConfig = config;
 
@@ -1089,15 +1098,13 @@ namespace CBL.PrintAssistant
                     return;
                 }
 
-                if (string.IsNullOrWhiteSpace(job.ImageUrl))
-                    throw new Exception("O job não trouxe image_url.");
-
-                bool isStripProfile = string.Equals(profileName, ProfileStrip, StringComparison.OrdinalIgnoreCase);
-
-                for (int i = 0; i < Math.Max(1, job.Copies); i++)
-                {
-                    await PrintImageFromUrlInternalAsync(job.ImageUrl, profile, isStripProfile, cancellationToken);
-                }
+                int copiesPrinted = await _jobPrintCoordinator.PrintAsync(
+                    profileName,
+                    generalConfig,
+                    profile,
+                    job,
+                    AddLog,
+                    cancellationToken);
 
                 await _printAgentService.SendAsync(
                     generalConfig.ApiBaseUrl,
@@ -1107,7 +1114,7 @@ namespace CBL.PrintAssistant
                         AgentId = profile.AgentId,
                         AgentToken = profile.AgentToken,
                         PrintOrderId = job.PrintOrderId,
-                        CopiesPrinted = Math.Max(1, job.Copies)
+                        CopiesPrinted = copiesPrinted
                     });
 
                 AddLog($"[{profileName}] Job concluído: {job.PrintOrderId}");
@@ -1722,3 +1729,5 @@ namespace CBL.PrintAssistant
         }
     }
 }
+
+
