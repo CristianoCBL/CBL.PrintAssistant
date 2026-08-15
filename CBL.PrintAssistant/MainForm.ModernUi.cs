@@ -726,7 +726,7 @@ namespace CBL.PrintAssistant
                 Font = new Font("Segoe UI Semibold", 7.6F),
                 Location = new Point(13, 8)
             });
-            value = new Label
+            var valueLabel = new Label
             {
                 Text = "—",
                 AutoEllipsis = true,
@@ -736,8 +736,9 @@ namespace CBL.PrintAssistant
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Size = new Size(190, 24)
             };
-            field.Controls.Add(value);
-            field.Resize += (_, _) => value.Width = field.ClientSize.Width - 26;
+            field.Controls.Add(valueLabel);
+            field.Resize += (_, _) => valueLabel.Width = field.ClientSize.Width - 26;
+            value = valueLabel;
             return field;
         }
 
