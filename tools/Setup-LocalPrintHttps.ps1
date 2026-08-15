@@ -52,8 +52,24 @@ $config | Add-Member AllowedOrigins @(
 ) -Force
 $config | ConvertTo-Json -Depth 5 | Set-Content $configPath -Encoding UTF8
 
+$firewallName = "CBL Print Assistant Local HTTPS"
+$existingRule = Get-NetFirewallRule -DisplayName $firewallName -ErrorAction SilentlyContinue
+if ($existingRule) {
+    Set-NetFirewallRule -DisplayName $firewallName -Enabled True -Direction Inbound -Action Allow -Profile Private | Out-Null
+    Get-NetFirewallPortFilter -AssociatedNetFirewallRule $existingRule -ErrorAction SilentlyContinue | Out-Null
+} else {
+    New-NetFirewallRule `
+        -DisplayName $firewallName `
+        -Direction Inbound `
+        -Action Allow `
+        -Protocol TCP `
+        -LocalPort $Port `
+        -Profile Private | Out-Null
+}
+
 Write-Host "Configuração HTTPS local criada em: $data"
 Write-Host "Pairing ID: $($config.PairingId)"
 Write-Host "Certificado para instalar no iPad: $cer"
+Write-Host "Porta HTTPS liberada no Firewall (rede Privada): $Port"
 Write-Host "Endereços incluídos: localhost, $machine, $($ips -join ', ')"
 Write-Host "Reinicie o CBL Print Assistant depois deste passo."
