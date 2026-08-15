@@ -483,7 +483,6 @@ namespace CBL.PrintAssistant
             group.Margin = new Padding(0);
             group.Padding = new Padding(0);
             group.FlatStyle = FlatStyle.Flat;
-            group.AutoScroll = true;
             group.Paint += (_, e) =>
             {
                 using var brush = new SolidBrush(UiSurface);
