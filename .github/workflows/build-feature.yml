@@ -26,3 +26,28 @@ jobs:
 
       - name: Build
         run: dotnet build CBL.PrintAssistant/CBL.PrintAssistant.csproj -c Release --no-restore
+
+      - name: Publish win-x64 test build
+        run: dotnet publish CBL.PrintAssistant/CBL.PrintAssistant.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish/win-x64
+
+      - name: Remove local runtime data if present
+        shell: pwsh
+        run: |
+          $paths = @(
+            "publish/win-x64/appconfig.json",
+            "publish/win-x64/localprint.json",
+            "publish/win-x64/localprint.pfx",
+            "publish/win-x64/localprint.pfx.password",
+            "publish/win-x64/localprint-data"
+          )
+          foreach ($path in $paths) {
+            if (Test-Path $path) { Remove-Item $path -Recurse -Force }
+          }
+
+      - name: Upload test artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CBL.PrintAssistant-offline-local-print-test
+          path: publish/win-x64
+          if-no-files-found: error
+          retention-days: 7
