@@ -6,25 +6,30 @@ namespace CBL.PrintAssistant
 {
     public partial class MainForm
     {
-        private static readonly Color UiBackground = Color.FromArgb(244, 247, 251);
+        private static readonly Color UiBackground = Color.FromArgb(241, 245, 249);
         private static readonly Color UiSurface = Color.White;
         private static readonly Color UiSurfaceSoft = Color.FromArgb(248, 250, 252);
-        private static readonly Color UiBorder = Color.FromArgb(226, 232, 240);
+        private static readonly Color UiBorder = Color.FromArgb(220, 227, 235);
         private static readonly Color UiPrimary = Color.FromArgb(37, 99, 235);
         private static readonly Color UiPrimaryHover = Color.FromArgb(29, 78, 216);
-        private static readonly Color UiPrimarySoft = Color.FromArgb(239, 246, 255);
+        private static readonly Color UiPrimarySoft = Color.FromArgb(219, 234, 254);
         private static readonly Color UiHeader = Color.FromArgb(15, 23, 42);
-        private static readonly Color UiHeaderEnd = Color.FromArgb(23, 37, 68);
+        private static readonly Color UiHeaderEnd = Color.FromArgb(24, 39, 72);
         private static readonly Color UiText = Color.FromArgb(30, 41, 59);
         private static readonly Color UiMuted = Color.FromArgb(100, 116, 139);
         private static readonly Color UiSuccess = Color.FromArgb(22, 163, 74);
         private static readonly Color UiSuccessSoft = Color.FromArgb(240, 253, 244);
         private static readonly Color UiWarning = Color.FromArgb(217, 119, 6);
-        private static readonly Color UiDanger = Color.FromArgb(220, 38, 38);
+        private static readonly Color UiWarningSoft = Color.FromArgb(255, 247, 237);
         private static readonly Color UiLog = Color.FromArgb(15, 23, 42);
 
         private TabControl? _modernTabs;
         private Button[]? _modernNavButtons;
+        private Button? _normalAdvancedButton;
+        private Button? _stripAdvancedButton;
+        private ToolTip? _uiToolTip;
+        private bool _normalAdvancedVisible;
+        private bool _stripAdvancedVisible;
 
         protected override void OnLoad(EventArgs e)
         {
@@ -41,10 +46,11 @@ namespace CBL.PrintAssistant
                 Font = new Font("Segoe UI", 9.25F, FontStyle.Regular, GraphicsUnit.Point);
                 FormBorderStyle = FormBorderStyle.Sizable;
                 MaximizeBox = true;
-                MinimumSize = new Size(1180, 760);
-                ClientSize = new Size(1240, 820);
+                MinimumSize = new Size(1100, 700);
+                ClientSize = new Size(1240, 780);
                 StartPosition = FormStartPosition.CenterScreen;
                 Text = "CBL Print Assistant";
+                _uiToolTip ??= new ToolTip();
 
                 Panel header = BuildHeader();
                 Panel workspace = BuildWorkspaceShell();
@@ -58,6 +64,7 @@ namespace CBL.PrintAssistant
                 ConfigureProfileGroup(groupStrip, true);
                 ConfigureLogList();
                 RefreshOperationButtonLabels();
+                UpdateAdvancedButtons();
                 UpdateNavigationState();
 
                 cmbRunMode.SelectedIndexChanged += (_, _) => RefreshOperationButtonLabels();
@@ -73,9 +80,9 @@ namespace CBL.PrintAssistant
             var header = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 96,
+                Height = 84,
                 BackColor = UiHeader,
-                Padding = new Padding(28, 16, 28, 14)
+                Padding = new Padding(26, 12, 26, 10)
             };
             header.Paint += (_, e) =>
             {
@@ -85,18 +92,18 @@ namespace CBL.PrintAssistant
 
             var logo = new Panel
             {
-                Size = new Size(48, 48),
-                Location = new Point(28, 22),
+                Size = new Size(44, 44),
+                Location = new Point(26, 20),
                 BackColor = UiPrimary
             };
-            RoundControl(logo, 14);
+            RoundControl(logo, 13);
             logo.Controls.Add(new Label
             {
                 Dock = DockStyle.Fill,
                 Text = "CBL",
                 TextAlign = ContentAlignment.MiddleCenter,
                 ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold)
+                Font = new Font("Segoe UI Semibold", 9.75F, FontStyle.Bold)
             });
 
             var title = new Label
@@ -104,8 +111,8 @@ namespace CBL.PrintAssistant
                 AutoSize = true,
                 Text = "Print Assistant",
                 ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 19F, FontStyle.Regular, GraphicsUnit.Point),
-                Location = new Point(92, 19)
+                Font = new Font("Segoe UI Semibold", 18F, FontStyle.Regular, GraphicsUnit.Point),
+                Location = new Point(86, 15)
             };
 
             var subtitle = new Label
@@ -113,33 +120,46 @@ namespace CBL.PrintAssistant
                 AutoSize = true,
                 Text = "Central de impressão para eventos e totens",
                 ForeColor = Color.FromArgb(148, 163, 184),
-                Font = new Font("Segoe UI", 9.5F, FontStyle.Regular, GraphicsUnit.Point),
-                Location = new Point(95, 57)
+                Font = new Font("Segoe UI", 9.25F, FontStyle.Regular, GraphicsUnit.Point),
+                Location = new Point(89, 51)
             };
 
+            string fullVersion = Application.ProductVersion ?? "";
             var versionBadge = new Panel
             {
-                Size = new Size(112, 34),
+                Size = new Size(86, 32),
                 BackColor = Color.FromArgb(30, 41, 59),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(header.Width - 140, 31)
+                Location = new Point(header.Width - 112, 26)
             };
-            RoundControl(versionBadge, 17);
-            versionBadge.Controls.Add(new Label
+            RoundControl(versionBadge, 16);
+            var versionLabel = new Label
             {
                 Dock = DockStyle.Fill,
-                Text = $"v{Application.ProductVersion}",
+                Text = GetDisplayVersion(),
                 TextAlign = ContentAlignment.MiddleCenter,
                 ForeColor = Color.FromArgb(226, 232, 240),
                 Font = new Font("Segoe UI Semibold", 9F)
-            });
-            header.Resize += (_, _) => versionBadge.Left = header.ClientSize.Width - versionBadge.Width - 28;
+            };
+            versionBadge.Controls.Add(versionLabel);
+            header.Resize += (_, _) => versionBadge.Left = header.ClientSize.Width - versionBadge.Width - 26;
+            _uiToolTip?.SetToolTip(versionBadge, $"Build {fullVersion}");
+            _uiToolTip?.SetToolTip(versionLabel, $"Build {fullVersion}");
 
             header.Controls.Add(logo);
             header.Controls.Add(title);
             header.Controls.Add(subtitle);
             header.Controls.Add(versionBadge);
             return header;
+        }
+
+        private static string GetDisplayVersion()
+        {
+            string version = Application.ProductVersion ?? "";
+            int metadata = version.IndexOf('+');
+            if (metadata >= 0)
+                version = version[..metadata];
+            return string.IsNullOrWhiteSpace(version) ? "v2.0.0" : $"v{version}";
         }
 
         private Panel BuildWorkspaceShell()
@@ -153,9 +173,9 @@ namespace CBL.PrintAssistant
             var navHost = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 64,
+                Height = 56,
                 BackColor = UiSurface,
-                Padding = new Padding(24, 10, 24, 10)
+                Padding = new Padding(22, 7, 22, 7)
             };
 
             var navFlow = new FlowLayoutPanel
@@ -178,7 +198,7 @@ namespace CBL.PrintAssistant
                     Text = names[i],
                     Name = $"nav{names[i]}",
                     Tag = "nav",
-                    Size = new Size(i == 1 ? 154 : 132, 42),
+                    Size = new Size(i == 1 ? 146 : 126, 40),
                     Margin = new Padding(0, 0, 8, 0),
                     FlatStyle = FlatStyle.Flat,
                     FlatAppearance = { BorderSize = 0 },
@@ -187,7 +207,7 @@ namespace CBL.PrintAssistant
                     BackColor = UiSurface,
                     ForeColor = UiMuted
                 };
-                RoundControl(button, 10);
+                RoundControl(button, 11);
                 button.Click += (_, _) => SelectWorkspace(index);
                 _modernNavButtons[i] = button;
                 navFlow.Controls.Add(button);
@@ -245,7 +265,7 @@ namespace CBL.PrintAssistant
             {
                 Text = text,
                 BackColor = UiBackground,
-                Padding = new Padding(24, 22, 24, 24),
+                Padding = new Padding(20, 16, 20, 20),
                 AutoScroll = true
             };
         }
@@ -269,7 +289,7 @@ namespace CBL.PrintAssistant
                 bool active = i == _modernTabs.SelectedIndex;
                 Button button = _modernNavButtons[i];
                 button.BackColor = active ? UiPrimarySoft : UiSurface;
-                button.ForeColor = active ? UiPrimary : UiMuted;
+                button.ForeColor = active ? Color.FromArgb(30, 64, 175) : UiMuted;
                 button.FlatAppearance.MouseOverBackColor = active ? UiPrimarySoft : UiSurfaceSoft;
             }
         }
@@ -279,8 +299,7 @@ namespace CBL.PrintAssistant
             var root = new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Height = 458,
                 ColumnCount = 1,
                 RowCount = 3,
                 BackColor = UiBackground,
@@ -288,22 +307,25 @@ namespace CBL.PrintAssistant
                 Margin = new Padding(0)
             };
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 148F));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 198F));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112F));
 
-            Panel commandCard = CreateCard(164);
+            Panel commandCard = CreateCard(134);
             commandCard.Dock = DockStyle.Fill;
-            commandCard.Margin = new Padding(0, 0, 0, 18);
-            AddSectionTitle(commandCard, "Operação", "Controle rápido da escuta, sincronização e modo ativo", 24, 20);
+            commandCard.Margin = new Padding(0, 0, 0, 14);
+            AddSectionTitle(commandCard, "Operação", "Controle rápido da escuta, sincronização e modo ativo", 22, 14);
 
             lblRunMode.Text = "Modo de execução";
-            lblRunMode.Location = new Point(26, 78);
+            lblRunMode.Location = new Point(24, 67);
             lblRunMode.AutoSize = true;
-            cmbRunMode.Location = new Point(26, 101);
-            cmbRunMode.Size = new Size(270, 30);
+            cmbRunMode.Location = new Point(24, 88);
+            cmbRunMode.Size = new Size(248, 29);
 
-            btnStartAll.Size = new Size(184, 44);
-            btnStopAll.Size = new Size(128, 44);
-            btnSyncFromSite.Size = new Size(188, 44);
-            btnCheckUpdates.Size = new Size(176, 44);
+            btnStartAll.Size = new Size(168, 42);
+            btnStopAll.Size = new Size(110, 42);
+            btnSyncFromSite.Size = new Size(170, 42);
+            btnCheckUpdates.Size = new Size(152, 42);
             btnStartAll.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnStopAll.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnSyncFromSite.Anchor = AnchorStyles.Top | AnchorStyles.Right;
@@ -311,13 +333,13 @@ namespace CBL.PrintAssistant
 
             void LayoutCommands()
             {
-                int right = commandCard.ClientSize.Width - 24;
+                int right = commandCard.ClientSize.Width - 20;
                 Button[] buttons = { btnCheckUpdates, btnSyncFromSite, btnStopAll, btnStartAll };
                 foreach (Button button in buttons)
                 {
                     right -= button.Width;
-                    button.Location = new Point(right, 94);
-                    right -= 10;
+                    button.Location = new Point(right, 75);
+                    right -= 8;
                 }
             }
             commandCard.Resize += (_, _) => LayoutCommands();
@@ -332,45 +354,44 @@ namespace CBL.PrintAssistant
 
             var summaries = new TableLayoutPanel
             {
-                Dock = DockStyle.Top,
-                Height = 226,
+                Dock = DockStyle.Fill,
                 ColumnCount = 2,
                 RowCount = 1,
                 BackColor = UiBackground,
-                Margin = new Padding(0, 0, 0, 18)
+                Margin = new Padding(0, 0, 0, 14)
             };
             summaries.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             summaries.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             summaries.Controls.Add(BuildProfileSummaryCard("Foto Normal", lblNormalStatusDot, lblNormalStatusText, cmbNormalPrinter, cmbNormalPaper, lblNormalSystemPrinterValue), 0, 0);
             summaries.Controls.Add(BuildProfileSummaryCard("Tirinha", lblStripStatusDot, lblStripStatusText, cmbStripPrinter, cmbStripPaper, lblStripSystemPrinterValue), 1, 0);
 
-            Panel localCard = CreateCard(144);
+            Panel localCard = CreateCard(112);
             localCard.Dock = DockStyle.Fill;
             localCard.Margin = new Padding(0);
-            AddSectionTitle(localCard, "Impressão local offline", "Canal dedicado para imprimir mesmo sem acesso à internet", 24, 18);
+            AddSectionTitle(localCard, "Impressão local offline", "Canal dedicado para imprimir mesmo sem acesso à internet", 22, 14);
 
-            var protocolBadge = CreatePill("HTTPS  •  porta 38452", UiPrimarySoft, UiPrimary, 180);
-            protocolBadge.Location = new Point(24, 83);
+            var protocolBadge = CreatePill("HTTPS 38452", UiPrimarySoft, Color.FromArgb(30, 64, 175), 124);
+            protocolBadge.Location = new Point(22, 68);
             localCard.Controls.Add(protocolBadge);
 
-            var queueBadge = CreatePill("Fila persistente", UiSuccessSoft, UiSuccess, 138);
-            queueBadge.Location = new Point(216, 83);
+            var queueBadge = CreatePill("Fila persistente", UiSuccessSoft, UiSuccess, 128);
+            queueBadge.Location = new Point(160, 68);
             localCard.Controls.Add(queueBadge);
 
-            var dedupeBadge = CreatePill("Anti-duplicação por jobId", Color.FromArgb(255, 247, 237), UiWarning, 188);
-            dedupeBadge.Location = new Point(366, 83);
+            var dedupeBadge = CreatePill("Anti-duplicação ativa", UiWarningSoft, UiWarning, 158);
+            dedupeBadge.Location = new Point(302, 68);
             localCard.Controls.Add(dedupeBadge);
 
             var goPrinters = new Button
             {
                 Text = "Configurar impressoras",
-                Size = new Size(190, 40),
+                Size = new Size(180, 38),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(localCard.Width - 214, 78)
+                Location = new Point(localCard.Width - 202, 64)
             };
             goPrinters.Click += (_, _) => SelectWorkspace(1);
             localCard.Controls.Add(goPrinters);
-            localCard.Resize += (_, _) => goPrinters.Left = localCard.ClientSize.Width - goPrinters.Width - 24;
+            localCard.Resize += (_, _) => goPrinters.Left = localCard.ClientSize.Width - goPrinters.Width - 22;
 
             root.Controls.Add(commandCard, 0, 0);
             root.Controls.Add(summaries, 0, 1);
@@ -380,23 +401,23 @@ namespace CBL.PrintAssistant
 
         private void BuildPrintersPage(TabPage page)
         {
-            Panel toolbar = CreateCard(96);
+            Panel toolbar = CreateCard(84);
             toolbar.Dock = DockStyle.Top;
-            toolbar.Margin = new Padding(0, 0, 0, 18);
-            AddSectionTitle(toolbar, "Impressoras", "Perfis físicos usados pelo motor profissional de impressão", 24, 18);
+            toolbar.Margin = new Padding(0, 0, 0, 14);
+            AddSectionTitle(toolbar, "Impressoras", "Perfis físicos usados pelo motor profissional de impressão", 22, 13);
 
             btnLoadPrinters.Text = "Atualizar impressoras";
-            btnLoadPrinters.Size = new Size(184, 40);
+            btnLoadPrinters.Size = new Size(174, 38);
             btnLoadPrinters.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnSaveConfig.Text = "Salvar configuração";
-            btnSaveConfig.Size = new Size(184, 40);
+            btnSaveConfig.Size = new Size(174, 38);
             btnSaveConfig.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             toolbar.Controls.Add(btnLoadPrinters);
             toolbar.Controls.Add(btnSaveConfig);
             toolbar.Resize += (_, _) =>
             {
-                btnSaveConfig.Location = new Point(toolbar.ClientSize.Width - 208, 28);
-                btnLoadPrinters.Location = new Point(toolbar.ClientSize.Width - 402, 28);
+                btnSaveConfig.Location = new Point(toolbar.ClientSize.Width - 196, 23);
+                btnLoadPrinters.Location = new Point(toolbar.ClientSize.Width - 380, 23);
             };
 
             var profiles = new TableLayoutPanel
@@ -405,7 +426,7 @@ namespace CBL.PrintAssistant
                 ColumnCount = 2,
                 RowCount = 1,
                 BackColor = UiBackground,
-                Padding = new Padding(0, 18, 0, 0)
+                Padding = new Padding(0, 14, 0, 0)
             };
             profiles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             profiles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
@@ -422,8 +443,8 @@ namespace CBL.PrintAssistant
         {
             Panel card = CreateCard(470);
             card.Dock = DockStyle.Fill;
-            card.Margin = strip ? new Padding(10, 0, 0, 0) : new Padding(0, 0, 10, 0);
-            card.Padding = new Padding(20, 66, 20, 18);
+            card.Margin = strip ? new Padding(9, 0, 0, 0) : new Padding(0, 0, 9, 0);
+            card.Padding = new Padding(18, 62, 18, 14);
 
             card.Controls.Add(new Label
             {
@@ -431,22 +452,38 @@ namespace CBL.PrintAssistant
                 AutoSize = true,
                 Font = new Font("Segoe UI Semibold", 13F),
                 ForeColor = UiText,
-                Location = new Point(22, 17)
+                Location = new Point(20, 14)
             });
             card.Controls.Add(new Label
             {
                 Text = subtitle,
                 AutoSize = true,
-                Font = new Font("Segoe UI", 8.75F),
+                Font = new Font("Segoe UI", 8.6F),
                 ForeColor = UiMuted,
-                Location = new Point(24, 44)
+                Location = new Point(22, 40)
             });
+
+            var advanced = new Button
+            {
+                Text = "Ajustes avançados",
+                Size = new Size(146, 34),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(card.Width - 166, 18)
+            };
+            advanced.Click += (_, _) => ToggleAdvancedProfile(strip, group);
+            card.Controls.Add(advanced);
+            card.Resize += (_, _) => advanced.Left = card.ClientSize.Width - advanced.Width - 20;
+            if (strip)
+                _stripAdvancedButton = advanced;
+            else
+                _normalAdvancedButton = advanced;
 
             group.Text = "";
             group.Dock = DockStyle.Fill;
             group.Margin = new Padding(0);
             group.Padding = new Padding(0);
             group.FlatStyle = FlatStyle.Flat;
+            group.AutoScroll = true;
             group.Paint += (_, e) =>
             {
                 using var brush = new SolidBrush(UiSurface);
@@ -454,7 +491,27 @@ namespace CBL.PrintAssistant
             };
             card.Controls.Add(group);
             group.BringToFront();
+            advanced.BringToFront();
             return card;
+        }
+
+        private void ToggleAdvancedProfile(bool strip, GroupBox group)
+        {
+            if (strip)
+                _stripAdvancedVisible = !_stripAdvancedVisible;
+            else
+                _normalAdvancedVisible = !_normalAdvancedVisible;
+
+            UpdateAdvancedButtons();
+            LayoutProfileGroup(group, strip);
+        }
+
+        private void UpdateAdvancedButtons()
+        {
+            if (_normalAdvancedButton != null)
+                _normalAdvancedButton.Text = _normalAdvancedVisible ? "Ocultar avançados" : "Ajustes avançados";
+            if (_stripAdvancedButton != null)
+                _stripAdvancedButton.Text = _stripAdvancedVisible ? "Ocultar avançados" : "Ajustes avançados";
         }
 
         private void BuildSystemPage(TabPage page)
@@ -462,7 +519,7 @@ namespace CBL.PrintAssistant
             var root = new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
-                Height = 430,
+                Height = 370,
                 ColumnCount = 2,
                 RowCount = 1,
                 BackColor = UiBackground,
@@ -472,33 +529,33 @@ namespace CBL.PrintAssistant
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62F));
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38F));
 
-            Panel connectionCard = CreateCard(410);
+            Panel connectionCard = CreateCard(360);
             connectionCard.Dock = DockStyle.Fill;
-            connectionCard.Margin = new Padding(0, 0, 10, 0);
-            AddSectionTitle(connectionCard, "Conexão e identificação", "Dados usados para conectar este equipamento ao ambiente KBINE", 24, 20);
+            connectionCard.Margin = new Padding(0, 0, 9, 0);
+            AddSectionTitle(connectionCard, "Conexão e identificação", "Dados usados para conectar este equipamento ao ambiente KBINE", 22, 16);
 
             label1.Text = "Endpoint da API";
-            label1.Location = new Point(26, 86);
-            txtSupabaseUrl.Location = new Point(26, 109);
+            label1.Location = new Point(24, 78);
+            txtSupabaseUrl.Location = new Point(24, 100);
             txtSupabaseUrl.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtSupabaseUrl.Size = new Size(connectionCard.Width - 52, 30);
+            txtSupabaseUrl.Size = new Size(connectionCard.Width - 48, 29);
 
             label2.Text = "Unit ID";
-            label2.Location = new Point(26, 164);
-            txtUnitId.Location = new Point(26, 187);
-            txtUnitId.Size = new Size(290, 30);
+            label2.Location = new Point(24, 149);
+            txtUnitId.Location = new Point(24, 171);
+            txtUnitId.Size = new Size(290, 29);
 
             label3.Text = "Kiosk ID";
-            label3.Location = new Point(342, 164);
-            txtKioskId.Location = new Point(342, 187);
-            txtKioskId.Size = new Size(290, 30);
+            label3.Location = new Point(340, 149);
+            txtKioskId.Location = new Point(340, 171);
+            txtKioskId.Size = new Size(290, 29);
 
             connectionCard.Resize += (_, _) =>
             {
-                txtSupabaseUrl.Width = connectionCard.ClientSize.Width - 52;
-                int half = Math.Max((connectionCard.ClientSize.Width - 78) / 2, 220);
+                txtSupabaseUrl.Width = connectionCard.ClientSize.Width - 48;
+                int half = Math.Max((connectionCard.ClientSize.Width - 74) / 2, 220);
                 txtUnitId.Width = half;
-                label3.Left = 26 + half + 26;
+                label3.Left = 24 + half + 26;
                 txtKioskId.Left = label3.Left;
                 txtKioskId.Width = half;
             };
@@ -506,14 +563,14 @@ namespace CBL.PrintAssistant
             var securityNote = new Label
             {
                 AutoSize = false,
-                Text = "Credenciais de agente permanecem protegidas e são configuradas na área Impressoras.",
+                Text = "Credenciais do agente ficam protegidas e são configuradas na área Impressoras.",
                 ForeColor = UiMuted,
-                Font = new Font("Segoe UI", 9F),
-                Location = new Point(26, 252),
-                Height = 44,
+                Font = new Font("Segoe UI", 8.9F),
+                Location = new Point(24, 229),
+                Height = 38,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
-            connectionCard.Resize += (_, _) => securityNote.Width = connectionCard.ClientSize.Width - 52;
+            connectionCard.Resize += (_, _) => securityNote.Width = connectionCard.ClientSize.Width - 48;
 
             connectionCard.Controls.Add(label1);
             connectionCard.Controls.Add(txtSupabaseUrl);
@@ -523,49 +580,45 @@ namespace CBL.PrintAssistant
             connectionCard.Controls.Add(txtKioskId);
             connectionCard.Controls.Add(securityNote);
 
-            Panel behaviorCard = CreateCard(410);
+            Panel behaviorCard = CreateCard(360);
             behaviorCard.Dock = DockStyle.Fill;
-            behaviorCard.Margin = new Padding(10, 0, 0, 0);
-            AddSectionTitle(behaviorCard, "Inicialização e integração", "Comportamento deste computador durante os eventos", 24, 20);
+            behaviorCard.Margin = new Padding(9, 0, 0, 0);
+            AddSectionTitle(behaviorCard, "Inicialização e integração", "Comportamento deste computador durante os eventos", 22, 16);
 
-            chkStartWithWindows.Location = new Point(26, 92);
-            chkAutoStartListening.Location = new Point(26, 132);
-            chkEnableLocalIntegration.Location = new Point(26, 172);
+            chkStartWithWindows.Location = new Point(24, 78);
+            chkAutoStartListening.Location = new Point(24, 113);
+            chkEnableLocalIntegration.Location = new Point(24, 148);
 
             var localTitle = new Label
             {
-                Text = "Companion offline",
+                Text = "Companion local",
                 AutoSize = true,
                 ForeColor = UiText,
                 Font = new Font("Segoe UI Semibold", 10F),
-                Location = new Point(26, 228)
+                Location = new Point(24, 198)
             };
-            var localInfo = new Label
-            {
-                AutoSize = false,
-                Text = "Configuração local: 127.0.0.1:38451\nImpressão offline HTTPS: porta 38452",
-                ForeColor = UiMuted,
-                Font = new Font("Segoe UI", 9F),
-                Location = new Point(26, 254),
-                Height = 48,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
-            behaviorCard.Resize += (_, _) => localInfo.Width = behaviorCard.ClientSize.Width - 52;
+            behaviorCard.Controls.Add(localTitle);
+
+            var configPill = CreatePill("Config 38451", UiSurfaceSoft, UiMuted, 112);
+            configPill.Location = new Point(24, 226);
+            behaviorCard.Controls.Add(configPill);
+
+            var httpsPill = CreatePill("HTTPS 38452", UiPrimarySoft, Color.FromArgb(30, 64, 175), 116);
+            httpsPill.Location = new Point(146, 226);
+            behaviorCard.Controls.Add(httpsPill);
 
             var saveSystem = new Button
             {
                 Name = "btnSaveSystemUi",
                 Text = "Salvar configuração",
-                Size = new Size(186, 40),
-                Location = new Point(26, 330)
+                Size = new Size(176, 38),
+                Location = new Point(24, 292)
             };
             saveSystem.Click += (sender, e) => btnSaveConfig_Click(sender ?? this, e);
 
             behaviorCard.Controls.Add(chkStartWithWindows);
             behaviorCard.Controls.Add(chkAutoStartListening);
             behaviorCard.Controls.Add(chkEnableLocalIntegration);
-            behaviorCard.Controls.Add(localTitle);
-            behaviorCard.Controls.Add(localInfo);
             behaviorCard.Controls.Add(saveSystem);
 
             root.Controls.Add(connectionCard, 0, 0);
@@ -581,14 +634,14 @@ namespace CBL.PrintAssistant
                 BackColor = UiBackground
             };
 
-            Panel header = CreateCard(96);
+            Panel header = CreateCard(84);
             header.Dock = DockStyle.Top;
-            AddSectionTitle(header, "Logs e diagnóstico", "Acompanhe conexões, jobs, impressão local e falhas do agente", 24, 18);
+            AddSectionTitle(header, "Logs e diagnóstico", "Acompanhe conexões, jobs, impressão local e falhas do agente", 22, 13);
 
             var copy = new Button
             {
                 Text = "Copiar logs",
-                Size = new Size(132, 38),
+                Size = new Size(126, 36),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             copy.Click += (_, _) =>
@@ -602,7 +655,7 @@ namespace CBL.PrintAssistant
             var clear = new Button
             {
                 Text = "Limpar visualização",
-                Size = new Size(166, 38),
+                Size = new Size(158, 36),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             clear.Click += (_, _) => listBox1.Items.Clear();
@@ -610,14 +663,14 @@ namespace CBL.PrintAssistant
             header.Controls.Add(clear);
             header.Resize += (_, _) =>
             {
-                clear.Location = new Point(header.ClientSize.Width - clear.Width - 24, 29);
-                copy.Location = new Point(clear.Left - copy.Width - 10, 29);
+                clear.Location = new Point(header.ClientSize.Width - clear.Width - 22, 24);
+                copy.Location = new Point(clear.Left - copy.Width - 9, 24);
             };
 
             Panel logCard = CreateCard(420);
             logCard.Dock = DockStyle.Fill;
             logCard.Padding = new Padding(12);
-            logCard.Margin = new Padding(0, 18, 0, 0);
+            logCard.Margin = new Padding(0, 14, 0, 0);
             logCard.BackColor = UiLog;
             listBox1.Dock = DockStyle.Fill;
             listBox1.Margin = new Padding(0);
@@ -630,39 +683,39 @@ namespace CBL.PrintAssistant
 
         private Panel BuildProfileSummaryCard(string title, Label sourceDot, Label sourceStatus, ComboBox sourcePrinter, ComboBox sourcePaper, Label sourceSystem)
         {
-            Panel card = CreateCard(216);
+            Panel card = CreateCard(184);
             card.Dock = DockStyle.Fill;
-            card.Margin = title == "Foto Normal" ? new Padding(0, 0, 10, 0) : new Padding(10, 0, 0, 0);
+            card.Margin = title == "Foto Normal" ? new Padding(0, 0, 9, 0) : new Padding(9, 0, 0, 0);
 
             var titleLabel = new Label
             {
                 Text = title,
                 AutoSize = true,
-                Font = new Font("Segoe UI Semibold", 13.5F),
+                Font = new Font("Segoe UI Semibold", 13F),
                 ForeColor = UiText,
-                Location = new Point(22, 20)
+                Location = new Point(20, 16)
             };
 
             var statusBadge = new Label
             {
                 AutoSize = false,
-                Size = new Size(86, 28),
+                Size = new Size(98, 28),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Font = new Font("Segoe UI Semibold", 8.75F),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(card.Width - 108, 18)
+                Location = new Point(card.Width - 118, 14)
             };
             RoundControl(statusBadge, 14);
-            card.Resize += (_, _) => statusBadge.Left = card.ClientSize.Width - statusBadge.Width - 22;
+            card.Resize += (_, _) => statusBadge.Left = card.ClientSize.Width - statusBadge.Width - 20;
 
             var grid = new TableLayoutPanel
             {
                 ColumnCount = 2,
                 RowCount = 2,
                 BackColor = UiSurface,
-                Location = new Point(18, 72),
+                Location = new Point(16, 58),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Size = new Size(card.Width - 36, 124),
+                Size = new Size(card.Width - 32, 108),
                 Margin = new Padding(0),
                 Padding = new Padding(0)
             };
@@ -670,14 +723,14 @@ namespace CBL.PrintAssistant
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             grid.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
             grid.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            card.Resize += (_, _) => grid.Width = card.ClientSize.Width - 36;
+            card.Resize += (_, _) => grid.Width = card.ClientSize.Width - 32;
 
             Panel printerField = BuildInfoField("Impressora", out Label printerValue);
             Panel paperField = BuildInfoField("Papel", out Label paperValue);
             Panel systemField = BuildInfoField("Totem / sistema", out Label systemValue);
-            printerField.Margin = new Padding(0, 0, 8, 8);
-            paperField.Margin = new Padding(8, 0, 0, 8);
-            systemField.Margin = new Padding(0, 0, 0, 0);
+            printerField.Margin = new Padding(0, 0, 7, 7);
+            paperField.Margin = new Padding(7, 0, 0, 7);
+            systemField.Margin = new Padding(0);
             grid.Controls.Add(printerField, 0, 0);
             grid.Controls.Add(paperField, 1, 0);
             grid.Controls.Add(systemField, 0, 1);
@@ -689,7 +742,7 @@ namespace CBL.PrintAssistant
 
             void Refresh()
             {
-                bool active = sourceStatus.Text.Contains("Ativ", StringComparison.OrdinalIgnoreCase);
+                bool active = string.Equals(sourceStatus.Text.Trim(), "Ativo", StringComparison.OrdinalIgnoreCase);
                 statusBadge.Text = active ? "●  Ativo" : "●  Inativo";
                 statusBadge.ForeColor = active ? UiSuccess : UiMuted;
                 statusBadge.BackColor = active ? UiSuccessSoft : UiSurfaceSoft;
@@ -715,29 +768,29 @@ namespace CBL.PrintAssistant
             {
                 Dock = DockStyle.Fill,
                 BackColor = UiSurfaceSoft,
-                Padding = new Padding(14, 10, 14, 8)
+                Padding = new Padding(12, 8, 12, 7)
             };
-            RoundControl(field, 10);
+            RoundControl(field, 9);
             field.Controls.Add(new Label
             {
                 Text = caption.ToUpperInvariant(),
                 AutoSize = true,
                 ForeColor = UiMuted,
-                Font = new Font("Segoe UI Semibold", 7.6F),
-                Location = new Point(13, 8)
+                Font = new Font("Segoe UI Semibold", 7.4F),
+                Location = new Point(11, 6)
             });
             var valueLabel = new Label
             {
                 Text = "—",
                 AutoEllipsis = true,
                 ForeColor = UiText,
-                Font = new Font("Segoe UI Semibold", 9.25F),
-                Location = new Point(13, 28),
+                Font = new Font("Segoe UI Semibold", 9F),
+                Location = new Point(11, 25),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Size = new Size(190, 24)
+                Size = new Size(190, 21)
             };
             field.Controls.Add(valueLabel);
-            field.Resize += (_, _) => valueLabel.Width = field.ClientSize.Width - 26;
+            field.Resize += (_, _) => valueLabel.Width = field.ClientSize.Width - 22;
             value = valueLabel;
             return field;
         }
@@ -748,13 +801,13 @@ namespace CBL.PrintAssistant
             {
                 Text = text,
                 AutoSize = false,
-                Size = new Size(width, 30),
+                Size = new Size(width, 28),
                 TextAlign = ContentAlignment.MiddleCenter,
                 BackColor = background,
                 ForeColor = foreground,
-                Font = new Font("Segoe UI Semibold", 8.5F)
+                Font = new Font("Segoe UI Semibold", 8.25F)
             };
-            RoundControl(label, 15);
+            RoundControl(label, 14);
             return label;
         }
 
@@ -791,7 +844,7 @@ namespace CBL.PrintAssistant
             {
                 Text = title,
                 AutoSize = true,
-                Font = new Font("Segoe UI Semibold", 13F),
+                Font = new Font("Segoe UI Semibold", 12.5F),
                 ForeColor = UiText,
                 Location = new Point(x, y)
             });
@@ -799,9 +852,9 @@ namespace CBL.PrintAssistant
             {
                 Text = subtitle,
                 AutoSize = true,
-                Font = new Font("Segoe UI", 9F),
+                Font = new Font("Segoe UI", 8.75F),
                 ForeColor = UiMuted,
-                Location = new Point(x, y + 31)
+                Location = new Point(x, y + 28)
             });
         }
 
@@ -809,7 +862,7 @@ namespace CBL.PrintAssistant
         {
             group.BackColor = UiSurface;
             group.ForeColor = UiText;
-            group.Font = new Font("Segoe UI", 9.25F);
+            group.Font = new Font("Segoe UI", 9.15F);
             group.Padding = new Padding(0);
             group.Resize += (_, _) => LayoutProfileGroup(group, strip);
             LayoutProfileGroup(group, strip);
@@ -820,6 +873,7 @@ namespace CBL.PrintAssistant
             int width = Math.Max(group.ClientSize.Width, 430);
             int fieldWidth = Math.Max(width - 18, 360);
             int tokenWidth = Math.Max(fieldWidth - 168, 210);
+            bool advanced = strip ? _stripAdvancedVisible : _normalAdvancedVisible;
 
             Label agentLabel = strip ? label26 : label9;
             Label tokenLabel = strip ? label25 : label10;
@@ -846,52 +900,71 @@ namespace CBL.PrintAssistant
             NumericUpDown offsetY = strip ? nudStripOffsetY : nudNormalOffsetY;
 
             statusCaption.Visible = false;
-            statusDot.Location = new Point(width - 108, 5);
-            statusText.Location = new Point(width - 84, 9);
+            statusDot.Location = new Point(width - 104, 2);
+            statusText.Location = new Point(width - 80, 6);
+
+            printerLabel.Location = new Point(8, 10);
+            printer.Location = new Point(8, 31);
+            printer.Size = new Size(fieldWidth, 29);
+
+            paperLabel.Text = "Papel";
+            paperLabel.Location = new Point(8, 72);
+            paper.Location = new Point(8, 93);
+            paper.Size = new Size(fieldWidth, 29);
+
+            rotationLabel.Location = new Point(8, 134);
+            rotation.Location = new Point(8, 155);
+            rotation.Size = new Size(fieldWidth, 29);
 
             agentLabel.Text = "Agent ID";
             tokenLabel.Text = "Agent Token";
-            agentLabel.Location = new Point(8, 14);
-            agent.Location = new Point(8, 36);
-            agent.Size = new Size(145, 29);
-            tokenLabel.Location = new Point(176, 14);
-            token.Location = new Point(176, 36);
-            token.Size = new Size(tokenWidth, 29);
+            agentLabel.ForeColor = UiMuted;
+            tokenLabel.ForeColor = UiMuted;
+            agentLabel.Location = new Point(8, 209);
+            agent.Location = new Point(8, 230);
+            agent.Size = new Size(145, 28);
+            tokenLabel.Location = new Point(176, 209);
+            token.Location = new Point(176, 230);
+            token.Size = new Size(tokenWidth, 28);
 
-            printerLabel.Location = new Point(8, 82);
-            printer.Location = new Point(8, 104);
-            printer.Size = new Size(fieldWidth, 30);
+            dpiLabel.Visible = advanced;
+            bleedLabel.Visible = advanced;
+            offsetXLabel.Visible = advanced;
+            offsetYLabel.Visible = advanced;
+            dpi.Visible = advanced;
+            bleed.Visible = advanced;
+            offsetX.Visible = advanced;
+            offsetY.Visible = advanced;
 
-            paperLabel.Text = "Papel";
-            paperLabel.Location = new Point(8, 147);
-            paper.Location = new Point(8, 169);
-            paper.Size = new Size(fieldWidth, 30);
-
-            rotationLabel.Location = new Point(8, 212);
-            rotation.Location = new Point(8, 234);
-            rotation.Size = new Size(fieldWidth, 30);
-
-            int numericWidth = Math.Max((fieldWidth - 42) / 4, 78);
-            int x1 = 8;
-            int x2 = x1 + numericWidth + 14;
-            int x3 = x2 + numericWidth + 14;
-            int x4 = x3 + numericWidth + 14;
-            dpiLabel.Location = new Point(x1, 278);
-            bleedLabel.Location = new Point(x2, 278);
-            offsetXLabel.Location = new Point(x3, 278);
-            offsetYLabel.Location = new Point(x4, 278);
-            dpi.Location = new Point(x1, 300);
-            bleed.Location = new Point(x2, 300);
-            offsetX.Location = new Point(x3, 300);
-            offsetY.Location = new Point(x4, 300);
-            dpi.Size = new Size(numericWidth, 29);
-            bleed.Size = new Size(numericWidth, 29);
-            offsetX.Size = new Size(numericWidth, 29);
-            offsetY.Size = new Size(numericWidth, 29);
+            if (advanced)
+            {
+                int numericWidth = Math.Max((fieldWidth - 42) / 4, 78);
+                int x1 = 8;
+                int x2 = x1 + numericWidth + 14;
+                int x3 = x2 + numericWidth + 14;
+                int x4 = x3 + numericWidth + 14;
+                dpiLabel.Location = new Point(x1, 280);
+                bleedLabel.Location = new Point(x2, 280);
+                offsetXLabel.Location = new Point(x3, 280);
+                offsetYLabel.Location = new Point(x4, 280);
+                dpi.Location = new Point(x1, 301);
+                bleed.Location = new Point(x2, 301);
+                offsetX.Location = new Point(x3, 301);
+                offsetY.Location = new Point(x4, 301);
+                dpi.Size = new Size(numericWidth, 28);
+                bleed.Size = new Size(numericWidth, 28);
+                offsetX.Size = new Size(numericWidth, 28);
+                offsetY.Size = new Size(numericWidth, 28);
+                systemCaption.Location = new Point(8, 350);
+                systemValue.Location = new Point(116, 350);
+            }
+            else
+            {
+                systemCaption.Location = new Point(8, 288);
+                systemValue.Location = new Point(116, 288);
+            }
 
             systemCaption.Text = "Totem / Sistema";
-            systemCaption.Location = new Point(8, 347);
-            systemValue.Location = new Point(116, 347);
             systemValue.Size = new Size(Math.Max(width - 126, 240), 24);
         }
 
@@ -941,28 +1014,28 @@ namespace CBL.PrintAssistant
                         textBox.BackColor = UiSurfaceSoft;
                         textBox.ForeColor = UiText;
                         textBox.BorderStyle = BorderStyle.FixedSingle;
-                        textBox.Font = new Font("Segoe UI", 9.25F);
+                        textBox.Font = new Font("Segoe UI", 9.15F);
                         break;
 
                     case ComboBox combo:
                         combo.BackColor = UiSurfaceSoft;
                         combo.ForeColor = UiText;
                         combo.FlatStyle = FlatStyle.Flat;
-                        combo.Font = new Font("Segoe UI", 9.25F);
+                        combo.Font = new Font("Segoe UI", 9.15F);
                         break;
 
                     case NumericUpDown numeric:
                         numeric.BackColor = UiSurfaceSoft;
                         numeric.ForeColor = UiText;
                         numeric.BorderStyle = BorderStyle.FixedSingle;
-                        numeric.Font = new Font("Segoe UI", 9.25F);
+                        numeric.Font = new Font("Segoe UI", 9.15F);
                         break;
 
                     case CheckBox check:
                         check.ForeColor = UiText;
                         check.UseVisualStyleBackColor = false;
                         check.BackColor = UiSurface;
-                        check.Font = new Font("Segoe UI", 9.25F);
+                        check.Font = new Font("Segoe UI", 9.15F);
                         break;
 
                     case Label label:
