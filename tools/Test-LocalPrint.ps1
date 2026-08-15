@@ -10,8 +10,12 @@ $configPath = Join-Path $data "localprint.json"
 if (-not (Test-Path $configPath)) { throw "Execute Setup-LocalPrintHttps.ps1 primeiro." }
 $config = Get-Content $configPath -Raw | ConvertFrom-Json
 
-$image = [IO.Path]::GetFullPath($ImagePath)
-if (-not (Test-Path $image)) { throw "Imagem nao encontrada: $image" }
+try {
+    $image = (Resolve-Path -LiteralPath $ImagePath -ErrorAction Stop).Path
+}
+catch {
+    throw "Imagem nao encontrada: $ImagePath"
+}
 $bytes = [IO.File]::ReadAllBytes($image)
 
 $sha256 = [Security.Cryptography.SHA256]::Create()
