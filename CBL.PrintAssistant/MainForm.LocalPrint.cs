@@ -79,7 +79,7 @@ namespace CBL.PrintAssistant
             if (string.IsNullOrWhiteSpace(settings.PaperName))
                 throw new InvalidOperationException("Perfil Normal sem papel configurado.");
 
-            using var probe = new PrinterSettings { PrinterName = settings.PrinterName };
+            var probe = new PrinterSettings { PrinterName = settings.PrinterName };
             if (!probe.IsValid)
                 throw new InvalidOperationException("A impressora do perfil Normal está indisponível no Windows.");
 
