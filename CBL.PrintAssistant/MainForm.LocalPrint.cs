@@ -87,7 +87,7 @@ namespace CBL.PrintAssistant
             {
                 token.ThrowIfCancellationRequested();
                 AddLog($"[LocalPrint] Imprimindo cópia {copy}/{settings.Copies} pelo perfil Normal.");
-                ProfessionalPrintEngine.PrintFile(imagePath, settings with { Copies = 1 }, stripMode: false);
+                ProfessionalPrintEngine.PrintFile(imagePath, settings, stripMode: false);
             }
         }
 
