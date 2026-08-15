@@ -33,7 +33,7 @@ namespace CBL.PrintAssistant
                 Font = new Font("Segoe UI", 9.25F, FontStyle.Regular, GraphicsUnit.Point);
                 FormBorderStyle = FormBorderStyle.Sizable;
                 MaximizeBox = true;
-                MinimumSize = new Size(1080, 740);
+                MinimumSize = new Size(1160, 740);
                 ClientSize = new Size(1180, 800);
                 StartPosition = FormStartPosition.CenterScreen;
                 Text = "CBL Print Assistant";
@@ -161,6 +161,7 @@ namespace CBL.PrintAssistant
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
 
             Panel commandCard = CreateCard(150);
+            commandCard.Dock = DockStyle.Fill;
             commandCard.Margin = new Padding(0, 0, 0, 18);
             AddSectionTitle(commandCard, "Operação", "Controle rápido da escuta e sincronização", 22, 18);
 
@@ -170,14 +171,27 @@ namespace CBL.PrintAssistant
             cmbRunMode.Location = new Point(24, 92);
             cmbRunMode.Size = new Size(270, 28);
 
-            btnStartAll.Location = new Point(320, 82);
             btnStartAll.Size = new Size(180, 42);
-            btnStopAll.Location = new Point(510, 82);
             btnStopAll.Size = new Size(130, 42);
-            btnSyncFromSite.Location = new Point(666, 82);
             btnSyncFromSite.Size = new Size(190, 42);
-            btnCheckUpdates.Location = new Point(866, 82);
             btnCheckUpdates.Size = new Size(185, 42);
+            btnStartAll.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnStopAll.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnSyncFromSite.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnCheckUpdates.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+
+            void LayoutCommands()
+            {
+                int right = commandCard.ClientSize.Width - 22;
+                btnCheckUpdates.Location = new Point(right - btnCheckUpdates.Width, 82);
+                right -= btnCheckUpdates.Width + 10;
+                btnSyncFromSite.Location = new Point(right - btnSyncFromSite.Width, 82);
+                right -= btnSyncFromSite.Width + 10;
+                btnStopAll.Location = new Point(right - btnStopAll.Width, 82);
+                right -= btnStopAll.Width + 10;
+                btnStartAll.Location = new Point(right - btnStartAll.Width, 82);
+            }
+            commandCard.Resize += (_, _) => LayoutCommands();
 
             commandCard.Controls.Add(lblRunMode);
             commandCard.Controls.Add(cmbRunMode);
@@ -185,6 +199,7 @@ namespace CBL.PrintAssistant
             commandCard.Controls.Add(btnStopAll);
             commandCard.Controls.Add(btnSyncFromSite);
             commandCard.Controls.Add(btnCheckUpdates);
+            LayoutCommands();
 
             var summaries = new TableLayoutPanel
             {
@@ -202,6 +217,7 @@ namespace CBL.PrintAssistant
             summaries.Controls.Add(BuildProfileSummaryCard("Tirinha", lblStripStatusDot, lblStripStatusText, cmbStripPrinter, cmbStripPaper, lblStripSystemPrinterValue), 1, 0);
 
             Panel hintCard = CreateCard(112);
+            hintCard.Dock = DockStyle.Fill;
             hintCard.Margin = new Padding(0);
             var hintTitle = new Label
             {
@@ -625,11 +641,6 @@ namespace CBL.PrintAssistant
                         break;
 
                     case Label label:
-                        if (!label.Name.EndsWith("StatusDot", StringComparison.OrdinalIgnoreCase) &&
-                            !label.Name.EndsWith("StatusText", StringComparison.OrdinalIgnoreCase))
-                        {
-                            label.ForeColor = label.ForeColor == Color.White ? Color.White : UiText;
-                        }
                         label.BackColor = Color.Transparent;
                         break;
                 }
