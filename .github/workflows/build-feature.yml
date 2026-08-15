@@ -44,6 +44,13 @@ jobs:
             if (Test-Path $path) { Remove-Item $path -Recurse -Force }
           }
 
+      - name: Bundle local test tools
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "publish/win-x64/tools" | Out-Null
+          Copy-Item "tools/Setup-LocalPrintHttps.ps1" "publish/win-x64/tools/Setup-LocalPrintHttps.ps1"
+          Copy-Item "tools/Test-LocalPrint.ps1" "publish/win-x64/tools/Test-LocalPrint.ps1"
+
       - name: Upload test artifact
         uses: actions/upload-artifact@v4
         with:
