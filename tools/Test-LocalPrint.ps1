@@ -11,18 +11,34 @@ if (-not (Test-Path $configPath)) { throw "Execute Setup-LocalPrintHttps.ps1 pri
 $config = Get-Content $configPath -Raw | ConvertFrom-Json
 
 $image = [IO.Path]::GetFullPath($ImagePath)
-if (-not (Test-Path $image)) { throw "Imagem não encontrada: $image" }
+if (-not (Test-Path $image)) { throw "Imagem nao encontrada: $image" }
 $bytes = [IO.File]::ReadAllBytes($image)
-$sha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+
+$sha256 = [Security.Cryptography.SHA256]::Create()
+try {
+    $hashBytes = $sha256.ComputeHash($bytes)
+}
+finally {
+    $sha256.Dispose()
+}
+$sha = -join ($hashBytes | ForEach-Object { $_.ToString("x2") })
+
 $jobId = [Guid]::NewGuid().ToString()
 $nonce = [Guid]::NewGuid().ToString("N")
 $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-$copiesSafe = [Math]::Clamp($Copies, 1, 10)
+$copiesSafe = [Math]::Min([Math]::Max($Copies, 1), 10)
 $variant = "composed"
 $text = "$jobId`n$copiesSafe`n$variant`n$sha`n$nonce`n$ts"
-$hmac = [Security.Cryptography.HMACSHA256]::new([Text.Encoding]::UTF8.GetBytes([string]$config.PairingSecret))
-try { $sig = [Convert]::ToHexString($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($text))).ToLowerInvariant() }
-finally { $hmac.Dispose() }
+
+$hmac = New-Object System.Security.Cryptography.HMACSHA256
+try {
+    $hmac.Key = [Text.Encoding]::UTF8.GetBytes([string]$config.PairingSecret)
+    $signatureBytes = $hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($text))
+}
+finally {
+    $hmac.Dispose()
+}
+$sig = -join ($signatureBytes | ForEach-Object { $_.ToString("x2") })
 
 $contentType = switch ([IO.Path]::GetExtension($image).ToLowerInvariant()) { ".png" {"image/png"}; ".bmp" {"image/bmp"}; default {"image/jpeg"} }
 $payload = @{
@@ -38,6 +54,6 @@ $result | ConvertTo-Json -Depth 5
 for ($i=0; $i -lt 30; $i++) {
     Start-Sleep 1
     $status = Invoke-RestMethod -Uri "$BaseUrl/job-status/$jobId"
-    Write-Host "Status: $($status.status) | cópias: $($status.copiesPrinted)"
+    Write-Host "Status: $($status.status) | copias: $($status.copiesPrinted)"
     if ($status.status -in @("printed","failed")) { $status | ConvertTo-Json -Depth 5; break }
 }
