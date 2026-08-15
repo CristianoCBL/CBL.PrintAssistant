@@ -4,6 +4,18 @@ $ErrorActionPreference = "Stop"
 $data = Join-Path $env:LOCALAPPDATA "CBL.PrintAssistant"
 New-Item -ItemType Directory -Force -Path $data | Out-Null
 
+function New-CblRandomBytes([int]$Count) {
+    $bytes = New-Object byte[] $Count
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($bytes)
+    }
+    finally {
+        $rng.Dispose()
+    }
+    return $bytes
+}
+
 $machine = $env:COMPUTERNAME
 $ips = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Where-Object { $_.IPAddress -ne "127.0.0.1" -and $_.IPAddress -notlike "169.254.*" } |
@@ -21,7 +33,7 @@ $cert = New-SelfSignedCertificate `
     -NotAfter (Get-Date).AddYears(2) -KeyExportPolicy Exportable `
     -TextExtension @($san)
 
-$passwordPlain = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
+$passwordPlain = [Convert]::ToBase64String((New-CblRandomBytes 24))
 $password = ConvertTo-SecureString $passwordPlain -AsPlainText -Force
 $pfx = Join-Path $data "localprint.pfx"
 $cer = Join-Path $data "localprint.cer"
@@ -39,7 +51,7 @@ try { $root.Add($cert) } finally { $root.Close() }
 $config = if (Test-Path $configPath) { Get-Content $configPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
 if (-not $config.PairingId) { $config | Add-Member PairingId "$($machine.ToLowerInvariant())-$([Guid]::NewGuid().ToString('N').Substring(0,12))" -Force }
 if (-not $config.PairingSecret) {
-    $secret = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).TrimEnd('=').Replace('+','-').Replace('/','_')
+    $secret = [Convert]::ToBase64String((New-CblRandomBytes 32)).TrimEnd('=').Replace('+','-').Replace('/','_')
     $config | Add-Member PairingSecret $secret -Force
 }
 $config | Add-Member Enabled $true -Force
@@ -56,7 +68,6 @@ $firewallName = "CBL Print Assistant Local HTTPS"
 $existingRule = Get-NetFirewallRule -DisplayName $firewallName -ErrorAction SilentlyContinue
 if ($existingRule) {
     Set-NetFirewallRule -DisplayName $firewallName -Enabled True -Direction Inbound -Action Allow -Profile Private | Out-Null
-    Get-NetFirewallPortFilter -AssociatedNetFirewallRule $existingRule -ErrorAction SilentlyContinue | Out-Null
 } else {
     New-NetFirewallRule `
         -DisplayName $firewallName `
@@ -67,9 +78,9 @@ if ($existingRule) {
         -Profile Private | Out-Null
 }
 
-Write-Host "Configuração HTTPS local criada em: $data"
+Write-Host "Configuracao HTTPS local criada em: $data"
 Write-Host "Pairing ID: $($config.PairingId)"
 Write-Host "Certificado para instalar no iPad: $cer"
 Write-Host "Porta HTTPS liberada no Firewall (rede Privada): $Port"
-Write-Host "Endereços incluídos: localhost, $machine, $($ips -join ', ')"
+Write-Host "Enderecos incluidos: localhost, $machine, $($ips -join ', ')"
 Write-Host "Reinicie o CBL Print Assistant depois deste passo."
